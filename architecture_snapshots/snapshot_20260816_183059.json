@@ -1,0 +1,170 @@
+{
+    "version": "1.0",
+    "commit_hash": "a31d42053e0783cfc61b4a20829e92d0befc114c",
+    "components": [
+        {
+            "id": "component_architecture_modeling_system",
+            "name": "Architecture Modeling System",
+            "responsibility": "Architecture Modeling System related functionality",
+            "layer": "module",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\app.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\sample_project.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\test_architecture_model.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\test_architecture_recovery.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\test_coupling.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\test_dep.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\test_env.py"
+            ],
+            "dependencies": [
+                "component_features",
+                "component_architecture_model",
+                "component_parser",
+                "component_analyzer",
+                "component_architect",
+                "component_embedder",
+                "component_dependency"
+            ]
+        },
+        {
+            "id": "component_architecture_model",
+            "name": "Architecture Model",
+            "responsibility": "Architecture Model related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\architecture_model\\model.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\architecture_model\\recovery.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\architecture_model\\__init__.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_features",
+            "name": "Features",
+            "responsibility": "Features related functionality",
+            "layer": "module",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\aicodeviewer.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\aiexplainer.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\ast_structural_clones.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\clone_detector.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\community_detector.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\coupling_miner.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\crossmoduleanalyser.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\docgenerator.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\execution_tracer.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\github_analyzer.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\impact_predictor.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\NIcodesearch.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\refactorsuggestor.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\risk_predictor.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\securityscanner.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\smelldetector.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\techdebt.py",
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\features\\testgenerator.py"
+            ],
+            "dependencies": [
+                "component_embedder"
+            ]
+        },
+        {
+            "id": "component_analyzer",
+            "name": "Analyzer",
+            "responsibility": "Analyzer related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\src\\analyzer.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_architect",
+            "name": "Architect",
+            "responsibility": "Architect related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\src\\architect.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_dependency",
+            "name": "Dependency",
+            "responsibility": "Dependency related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\src\\dependency.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_embedder",
+            "name": "Embedder",
+            "responsibility": "Embedder related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\src\\embedder.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_parser",
+            "name": "Parser",
+            "responsibility": "Parser related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Admin\\AppData\\Local\\Temp\\architecture_github_i88orihw\\Architecture_modeling_system\\src\\parser.py"
+            ],
+            "dependencies": []
+        }
+    ],
+    "relationships": [
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_features",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_architecture_model",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_parser",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_analyzer",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_architect",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_embedder",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_dependency",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_embedder",
+            "type": "depends_on"
+        }
+    ],
+    "metrics": {
+        "total_components": 8,
+        "total_relationships": 8,
+        "total_files": 33
+    },
+    "violations": [],
+    "timestamp": "2026-08-16T18:30:40.404221"
+}

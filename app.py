@@ -1,34 +1,67 @@
-from features.coupling_miner import mine_logical_coupling
-import streamlit as st
-import sys
+"""
+AI-ASSISTED SOFTWARE ARCHITECTURE INTELLIGENCE SYSTEM
+
+Core capabilities:
+1. Source-code structural analysis
+2. AST analysis
+3. Architecture recovery
+4. Persistent architecture snapshots
+5. Interactive architecture visualization
+6. Dependency analysis
+7. Multi-file architecture analysis
+8. Architecture metrics
+9. Logical coupling analysis
+10. Module boundary detection
+11. Architecture risk analysis
+12. Architecture debt analysis
+13. Semantic embeddings foundation
+14. GitHub repository analysis
+
+Architecture Time Machine:
+    Recover architecture at historical Git commits and compare
+    architecture snapshots over time.
+
+Future:
+    Architecture-aware RAG
+    Evidence-grounded architecture assistant
+    What-if architecture simulation
+"""
+
+# ============================================================
+# IMPORTS
+# ============================================================
+
 import os
+import sys
 import tempfile
+import ast
+from pathlib import Path
+
+import streamlit as st
 import networkx as nx
 import plotly.graph_objects as go
-from git import Repo
-from pathlib import Path
-import subprocess
-import ast
-from architecture_model.recovery import recover_architecture
-from features.clone_detector import summarize_clones
-from features.community_detector import analyze_modularity
-from features.risk_predictor import compute_risk_scores
-from features.execution_tracer import trace_static_execution_path, draw_execution_step
-from features.NIcodesearch import CodeSearchEngine
-from features.impact_predictor import predict_change_impact
-from features.ast_structural_clones import find_structural_clones
+from git import Repo, InvalidGitRepositoryError, NoSuchPathError
 from dotenv import load_dotenv
-from features.github_analyzer import (
-    clone_github_repository,
-    find_python_files,
-    get_repository_info
-)
 
-# ─────────────────────────────────────────────────────────────
-# LOAD ENVIRONMENT
-# ─────────────────────────────────────────────────────────────
+
+# ============================================================
+# PATH CONFIGURATION
+# ============================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+FEATURES_DIR = os.path.join(BASE_DIR, "features")
+
+if FEATURES_DIR not in sys.path:
+    sys.path.insert(0, FEATURES_DIR)
+
+
+# ============================================================
+# ENVIRONMENT
+# ============================================================
 
 load_dotenv()
 
@@ -38,160 +71,422 @@ if os.path.exists(SRC_ENV):
     load_dotenv(SRC_ENV)
 
 
-# ─────────────────────────────────────────────────────────────
-# PATH FIX
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# REPOSITORY IMPORTS
+# ============================================================
 
-sys.path.insert(0, BASE_DIR)
-sys.path.insert(0, os.path.join(BASE_DIR, "features"))
+from repository.loader import (
+    clone_github_repository,
+    extract_uploaded_repository,
+    get_repository_name,
+    get_python_files,
+)
 
 
-# ─────────────────────────────────────────────────────────────
+# ============================================================
 # PROJECT IMPORTS
-# ─────────────────────────────────────────────────────────────
+# ============================================================
 
 from src.parser import (
     parse_file,
     read_file,
-    get_summary
+    get_summary,
 )
 
 from src.analyzer import analyze_parsed_result
 
 from src.architect import (
     build_graph,
-    draw_graph
-)
-
-from src.embedder import embed_parsed_result
-
-from features.testgenerator import generate_tests_for_file
-
-from features.refactorsuggestor import refactor_all_functions
-
-from features.docgenerator import (
-    generate_readme,
-    build_complexity_report
+    draw_graph,
 )
 
 from src.dependency import (
     build_dependency_graph,
-    draw_dependency_graph
+    draw_dependency_graph,
 )
 
-from features.aiexplainer import explain_code
-
-from features.aicodeviewer import review_code
-
-from features.techdebt import calculate_technical_debt
+from src.embedder import embed_parsed_result
 
 
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# ARCHITECTURE MODEL
+# ============================================================
+
+try:
+    from architecture_model.recovery import recover_architecture
+
+    ARCHITECTURE_MODEL_AVAILABLE = True
+
+except ImportError:
+    ARCHITECTURE_MODEL_AVAILABLE = False
+
+
+# ============================================================
+# OPTIONAL ARCHITECTURE FEATURES
+# ============================================================
+
+try:
+    from features.coupling_miner import mine_logical_coupling
+
+    COUPLING_AVAILABLE = True
+
+except ImportError:
+    COUPLING_AVAILABLE = False
+
+
+try:
+    from features.community_detector import analyze_modularity
+
+    COMMUNITY_AVAILABLE = True
+
+except ImportError:
+    COMMUNITY_AVAILABLE = False
+
+
+try:
+    from features.risk_predictor import compute_risk_scores
+
+    RISK_AVAILABLE = True
+
+except ImportError:
+    RISK_AVAILABLE = False
+
+
+try:
+    from features.impact_predictor import predict_change_impact
+
+    IMPACT_AVAILABLE = True
+
+except ImportError:
+    IMPACT_AVAILABLE = False
+
+
+try:
+    from features.techdebt import calculate_technical_debt
+
+    TECH_DEBT_AVAILABLE = True
+
+except ImportError:
+    TECH_DEBT_AVAILABLE = False
+
+
+# ============================================================
 # PAGE CONFIGURATION
-# ─────────────────────────────────────────────────────────────
+# ============================================================
 
 st.set_page_config(
-    page_title="AI Code Analyzer",
-    page_icon="🧠",
-    layout="wide"
+    page_title="Architecture Intelligence System",
+    page_icon="🏗️",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
-# ─────────────────────────────────────────────────────────────
+# ============================================================
 # CUSTOM CSS
-# ─────────────────────────────────────────────────────────────
+# ============================================================
 
 STYLE_PATH = os.path.join(BASE_DIR, "style.css")
 
 if os.path.exists(STYLE_PATH):
-    with open(STYLE_PATH, encoding="utf-8") as f:
-        st.markdown(
-            f"<style>{f.read()}</style>",
-            unsafe_allow_html=True,
+
+    try:
+
+        with open(
+            STYLE_PATH,
+            "r",
+            encoding="utf-8",
+        ) as f:
+
+            st.markdown(
+                f"<style>{f.read()}</style>",
+                unsafe_allow_html=True,
+            )
+
+    except Exception:
+        pass
+
+
+# ============================================================
+# SESSION STATE INITIALIZATION
+# ============================================================
+
+DEFAULT_SESSION_STATE = {
+
+    "uploaded_file_data": [],
+
+    "github_repo_path": None,
+
+    "repository_source": None,
+
+    "repository_name": None,
+
+    "repository_file_paths": [],
+
+    "repository_local_path": None,
+
+    "repository_url": None,
+
+    "latest_architecture_snapshot": None,
+
+    "architecture_snapshots": [],
+
+    "active_page": "🏠 Overview",
+
+}
+
+
+for key, default_value in DEFAULT_SESSION_STATE.items():
+
+    if key not in st.session_state:
+
+        st.session_state[key] = default_value
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def repository_loaded():
+    """
+    Return True if a repository or uploaded Python files
+    are currently available.
+    """
+
+    return bool(
+        st.session_state.get("repository_file_paths")
+        or st.session_state.get("uploaded_file_data")
+    )
+
+
+def git_repository_available():
+    """
+    Return True when the currently loaded repository has
+    usable Git history.
+    """
+
+    repo_path = (
+        st.session_state.get("github_repo_path")
+        or st.session_state.get("repository_local_path")
+    )
+
+    if not repo_path:
+        return False
+
+    try:
+
+        repo = Repo(repo_path)
+
+        return not repo.bare and repo.head.is_valid()
+
+    except Exception:
+        return False
+
+
+def get_current_repository_path():
+    """
+    Return the active repository path.
+    """
+
+    return (
+        st.session_state.get("repository_local_path")
+        or st.session_state.get("github_repo_path")
+    )
+
+
+def get_relative_file_name(file_path):
+    """
+    Convert an absolute repository file path into
+    a repository-relative path.
+    """
+
+    root = get_current_repository_path()
+
+    if root:
+
+        try:
+
+            return os.path.relpath(
+                file_path,
+                root,
+            )
+
+        except Exception:
+            pass
+
+    return file_path
+
+
+def require_uploaded_files():
+    """
+    Require a loaded repository or uploaded Python files.
+    """
+
+    if not repository_loaded():
+
+        st.warning(
+            "📂 Open **📂 Repository Input** and load a "
+            "GitHub repository, ZIP repository, or Python files first."
         )
 
-
-# ─────────────────────────────────────────────────────────────
-# LEFT-SIDE NAVIGATION
-# ─────────────────────────────────────────────────────────────
-
-PAGES = [
-    "🏠 Analyzer",
-    "💻 Code",
-    "🌳 AST",
-    "🤖 AI Analysis",
-    "🏗️ Architecture",
-    "🔢 Embeddings",
-    "🧪 Tests",
-    "🔧 Refactor",
-    "📚 Docs",
-    "🔗 Dependency Graph",
-    "💡 Explain Code",
-    "🌐 Multi-file Analysis",
-    "👨‍💻 Code Review Bot",
-    "💰 Technical Debt",
-    "🐙 Git Analysis",
-    "🔀 Logical Coupling",
-    "🧬 Clone Detection",
-    "🧩 Module Boundaries",
-    "🔥 Risk Hotspots",
-    "▶️ Execution Replay",
-    "🔎 NL Code Search",
-    "⚡ Change Impact",
-    "⏳ Architecture Time Machine",
-]
+        st.stop()
 
 
-with st.sidebar:
-
-    st.markdown(
-        '<div class="sidebar-logo">🧠 AI Code Analyzer</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.caption("AI-powered source-code analysis")
-
-    st.markdown(
-        '<div class="sidebar-section-label">Navigation</div>',
-        unsafe_allow_html=True
-    )
-
-    page = st.radio(
-        "Navigation",
-        PAGES,
-        index=PAGES.index(
-            st.session_state.get(
-                "active_page",
-                "🏠 Analyzer"
-            )
-        ),
-        label_visibility="collapsed",
-        key="active_page",
-    )
-
-
-st.title("🧠 AI Code Analyzer")
-
-st.caption(
-    "Analyze code structure, architecture, dependencies, "
-    "quality, documentation, and technical debt."
-)
-
-
-# ─────────────────────────────────────────────────────────────
-# ANIMATED ARCHITECTURE FUNCTION
-# ─────────────────────────────────────────────────────────────
-
-def create_animated_architecture(G):
-
+def require_git_repository():
     """
-    Create an interactive and animated software architecture
-    diagram using Plotly and NetworkX.
+    Require a repository with valid Git history.
+    """
+
+    require_uploaded_files()
+
+    if not git_repository_available():
+
+        st.warning(
+            "🐙 This feature requires a repository with valid Git history. "
+            "Load a GitHub repository containing its `.git` history."
+        )
+
+        st.stop()
+
+
+# ============================================================
+# UPLOADED FILE HELPERS
+# ============================================================
+
+def create_temp_files():
+    """
+    Recreate uploaded Python files as temporary files.
+
+    Returns:
+        list[str]: temporary file paths
+    """
+
+    file_paths = []
+
+    uploaded_files = st.session_state.get(
+        "uploaded_file_data",
+        [],
+    )
+
+    for item in uploaded_files:
+
+        try:
+
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".py",
+            )
+
+            tmp.write(item["data"])
+
+            tmp.close()
+
+            file_paths.append(tmp.name)
+
+        except Exception as e:
+
+            st.warning(
+                f"Could not create temporary file "
+                f"for `{item.get('name', 'unknown')}`: {e}"
+            )
+
+    return file_paths
+
+
+def parse_uploaded_files():
+    """
+    Parse repository Python files or legacy uploaded Python files.
+
+    Returns:
+        file_paths
+        parsed_files
+        source_files
+    """
+
+    repository_files = st.session_state.get(
+        "repository_file_paths",
+        [],
+    )
+
+    if repository_files:
+
+        file_paths = list(repository_files)
+
+    else:
+
+        file_paths = create_temp_files()
+
+    parsed_files = []
+
+    source_files = []
+
+    for path in file_paths:
+
+        try:
+
+            parsed = parse_file(path)
+
+            source = read_file(path)
+
+            parsed_files.append(parsed)
+
+            source_files.append(source)
+
+        except Exception as e:
+
+            st.warning(
+                f"Could not parse `{path}`: {e}"
+            )
+
+    return (
+        file_paths,
+        parsed_files,
+        source_files,
+    )
+
+
+# ============================================================
+# DEPENDENCY GRAPH
+# ============================================================
+
+def build_combined_dependency_graph(file_paths):
+
+    G = nx.DiGraph()
+
+    for path in file_paths:
+
+        try:
+
+            subgraph = build_dependency_graph(path)
+
+            G = nx.compose(
+                G,
+                subgraph,
+            )
+
+        except Exception as e:
+
+            st.warning(
+                f"Could not analyze `{path}`: {e}"
+            )
+
+    return G
+
+
+# ============================================================
+# ARCHITECTURE GRAPH VISUALIZATION
+# ============================================================
+
+def create_architecture_graph(G):
+    """
+    Create interactive architecture graph.
     """
 
     if G.number_of_nodes() == 0:
 
-        st.warning("No architecture nodes found.")
+        st.warning(
+            "No architecture nodes were detected."
+        )
 
         return
 
@@ -199,7 +494,344 @@ def create_animated_architecture(G):
         G,
         seed=42,
         k=2.0,
-        iterations=100
+        iterations=100,
+    )
+
+    edge_x = []
+    edge_y = []
+
+    for source, target in G.edges():
+
+        if source not in pos or target not in pos:
+            continue
+
+        x0, y0 = pos[source]
+        x1, y1 = pos[target]
+
+        edge_x.extend(
+            [x0, x1, None]
+        )
+
+        edge_y.extend(
+            [y0, y1, None]
+        )
+
+    edge_trace = go.Scatter(
+        x=edge_x,
+        y=edge_y,
+        mode="lines",
+        line=dict(width=1.5),
+        hoverinfo="none",
+    )
+
+    node_x = []
+    node_y = []
+    node_text = []
+    node_hover = []
+
+    for node in G.nodes():
+
+        x, y = pos[node]
+
+        node_x.append(x)
+        node_y.append(y)
+
+        node_text.append(
+            str(node)
+        )
+
+        node_hover.append(
+            f"<b>{node}</b><br>"
+            f"Dependencies: {G.degree(node)}"
+        )
+
+    node_trace = go.Scatter(
+        x=node_x,
+        y=node_y,
+        mode="markers+text",
+        text=node_text,
+        textposition="top center",
+        hovertext=node_hover,
+        hoverinfo="text",
+        marker=dict(
+            size=28,
+            line=dict(width=2),
+        ),
+    )
+
+    fig = go.Figure(
+        data=[
+            edge_trace,
+            node_trace,
+        ]
+    )
+
+    fig.update_layout(
+        title={
+            "text": "🏗️ Recovered Software Architecture",
+            "x": 0.5,
+            "xanchor": "center",
+        },
+        showlegend=False,
+        height=700,
+        hovermode="closest",
+        margin=dict(
+            b=20,
+            l=20,
+            r=20,
+            t=80,
+        ),
+        xaxis=dict(
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+        ),
+        yaxis=dict(
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+        ),
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "Components",
+        G.number_of_nodes(),
+    )
+
+    c2.metric(
+        "Dependencies",
+        G.number_of_edges(),
+    )
+
+    density = (
+        nx.density(G)
+        if G.number_of_nodes() > 0
+        else 0
+    )
+
+    c3.metric(
+        "Graph Density",
+        f"{density:.3f}",
+    )
+
+
+# ============================================================
+# SNAPSHOT HELPERS
+# ============================================================
+
+def snapshot_to_dict(snapshot):
+    """
+    Convert ArchitectureSnapshot into a dictionary.
+    """
+
+    if snapshot is None:
+        return {}
+
+    if isinstance(snapshot, dict):
+        return snapshot
+
+    try:
+
+        if hasattr(snapshot, "model_dump"):
+
+            return snapshot.model_dump()
+
+        if hasattr(snapshot, "dict"):
+
+            return snapshot.dict()
+
+        if hasattr(snapshot, "__dict__"):
+
+            return dict(snapshot.__dict__)
+
+    except Exception:
+        pass
+
+    data = {}
+
+    for field in [
+        "version",
+        "commit_hash",
+        "components",
+        "relationships",
+        "metrics",
+        "violations",
+        "timestamp",
+    ]:
+
+        try:
+
+            if hasattr(snapshot, field):
+
+                data[field] = getattr(
+                    snapshot,
+                    field,
+                )
+
+        except Exception:
+            pass
+
+    return data
+
+
+def display_architecture_snapshot(
+    snapshot,
+    title="Architecture Snapshot",
+):
+    """
+    Display ArchitectureSnapshot in the UI.
+    """
+
+    if snapshot is None:
+
+        st.info(
+            "No architecture snapshot available."
+        )
+
+        return
+
+    data = snapshot_to_dict(
+        snapshot
+    )
+
+    st.markdown(
+        f"### 🏗️ {title}"
+    )
+
+    commit_hash = data.get(
+        "commit_hash",
+        "unknown",
+    )
+
+    version = data.get(
+        "version",
+        "unknown",
+    )
+
+    timestamp = data.get(
+        "timestamp",
+        None,
+    )
+
+    metrics = data.get(
+        "metrics",
+        {},
+    )
+
+    if not isinstance(metrics, dict):
+        metrics = {}
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "Version",
+        str(version),
+    )
+
+    c2.metric(
+        "Commit",
+        str(commit_hash)[:7],
+    )
+
+    c3.metric(
+        "Components",
+        metrics.get(
+            "total_components",
+            len(data.get("components", [])),
+        ),
+    )
+
+    c4, c5, c6 = st.columns(3)
+
+    c4.metric(
+        "Relationships",
+        metrics.get(
+            "total_relationships",
+            len(data.get("relationships", [])),
+        ),
+    )
+
+    c5.metric(
+        "Files",
+        metrics.get(
+            "total_files",
+            0,
+        ),
+    )
+
+    c6.metric(
+        "Violations",
+        len(
+            data.get(
+                "violations",
+                [],
+            )
+        ),
+    )
+
+    if timestamp:
+
+        st.caption(
+            f"Snapshot timestamp: {timestamp}"
+        )
+
+    with st.expander(
+        "📦 View Architecture Snapshot Details"
+    ):
+
+        st.json(
+            data,
+            expanded=False,
+        )
+
+
+# ============================================================
+# TEMP FILE CLEANUP
+# ============================================================
+
+def cleanup_temp_files(file_paths):
+
+    for path in file_paths:
+
+        try:
+
+            if os.path.exists(path):
+
+                os.unlink(path)
+
+        except Exception:
+            pass
+
+
+# ============================================================
+# ANIMATED ARCHITECTURE
+# ============================================================
+
+def create_animated_architecture(G):
+    """
+    Create interactive animated architecture diagram.
+    """
+
+    if G.number_of_nodes() == 0:
+
+        st.warning(
+            "No architecture nodes found."
+        )
+
+        return
+
+    pos = nx.spring_layout(
+        G,
+        seed=42,
+        k=2.0,
+        iterations=100,
     )
 
     nodes = list(G.nodes())
@@ -228,7 +860,7 @@ def create_animated_architecture(G):
         y=edge_y,
         mode="lines",
         line=dict(width=1.5),
-        hoverinfo="none"
+        hoverinfo="none",
     )
 
     node_x = []
@@ -247,10 +879,9 @@ def create_animated_architecture(G):
             str(node)
         )
 
-        degree = G.degree(node)
-
         node_hover.append(
-            f"<b>{node}</b><br>Connections: {degree}"
+            f"<b>{node}</b><br>"
+            f"Connections: {G.degree(node)}"
         )
 
     node_trace = go.Scatter(
@@ -263,18 +894,22 @@ def create_animated_architecture(G):
         hoverinfo="text",
         marker=dict(
             size=28,
-            line=dict(width=2)
-        )
+            line=dict(width=2),
+        ),
     )
 
     frames = []
 
     for step in range(
         1,
-        len(nodes) + 1
+        len(nodes) + 1,
     ):
 
         visible_nodes = nodes[:step]
+
+        visible_set = set(
+            visible_nodes
+        )
 
         visible_node_x = []
         visible_node_y = []
@@ -300,10 +935,6 @@ def create_animated_architecture(G):
         visible_edge_x = []
         visible_edge_y = []
 
-        visible_set = set(
-            visible_nodes
-        )
-
         for source, target in G.edges():
 
             if (
@@ -322,40 +953,40 @@ def create_animated_architecture(G):
                     [y0, y1, None]
                 )
 
-        frame = go.Frame(
-            name=f"frame{step}",
-            data=[
-                go.Scatter(
-                    x=visible_edge_x,
-                    y=visible_edge_y,
-                    mode="lines",
-                    line=dict(width=1.5),
-                    hoverinfo="none"
-                ),
-                go.Scatter(
-                    x=visible_node_x,
-                    y=visible_node_y,
-                    mode="markers+text",
-                    text=visible_node_text,
-                    textposition="top center",
-                    hovertext=visible_node_hover,
-                    hoverinfo="text",
-                    marker=dict(
-                        size=28,
-                        line=dict(width=2)
-                    )
-                )
-            ]
+        frames.append(
+            go.Frame(
+                name=f"frame{step}",
+                data=[
+                    go.Scatter(
+                        x=visible_edge_x,
+                        y=visible_edge_y,
+                        mode="lines",
+                        line=dict(width=1.5),
+                        hoverinfo="none",
+                    ),
+                    go.Scatter(
+                        x=visible_node_x,
+                        y=visible_node_y,
+                        mode="markers+text",
+                        text=visible_node_text,
+                        textposition="top center",
+                        hovertext=visible_node_hover,
+                        hoverinfo="text",
+                        marker=dict(
+                            size=28,
+                            line=dict(width=2),
+                        ),
+                    ),
+                ],
+            )
         )
-
-        frames.append(frame)
 
     fig = go.Figure(
         data=[
             edge_trace,
-            node_trace
+            node_trace,
         ],
-        frames=frames
+        frames=frames,
     )
 
     fig.update_layout(
@@ -363,30 +994,32 @@ def create_animated_architecture(G):
         title=dict(
             text="🏗️ Interactive Software Architecture",
             x=0.5,
-            xanchor="center"
+            xanchor="center",
         ),
 
         showlegend=False,
+
         hovermode="closest",
+
         height=700,
 
         margin=dict(
             b=20,
             l=20,
             r=20,
-            t=100
+            t=100,
         ),
 
         xaxis=dict(
             showgrid=False,
             zeroline=False,
-            showticklabels=False
+            showticklabels=False,
         ),
 
         yaxis=dict(
             showgrid=False,
             zeroline=False,
-            showticklabels=False
+            showticklabels=False,
         ),
 
         updatemenus=[
@@ -394,8 +1027,11 @@ def create_animated_architecture(G):
             dict(
 
                 type="buttons",
+
                 showactive=False,
+
                 x=0.01,
+
                 y=1.12,
 
                 buttons=[
@@ -411,25 +1047,21 @@ def create_animated_architecture(G):
                                 f"frame{i}"
                                 for i in range(
                                     1,
-                                    len(nodes) + 1
+                                    len(nodes) + 1,
                                 )
                             ],
-
                             {
                                 "frame": {
                                     "duration": 700,
-                                    "redraw": True
+                                    "redraw": True,
                                 },
-
                                 "transition": {
-                                    "duration": 400
+                                    "duration": 400,
                                 },
-
                                 "fromcurrent": True,
-
-                                "mode": "immediate"
-                            }
-                        ]
+                                "mode": "immediate",
+                            },
+                        ],
                     ),
 
                     dict(
@@ -442,39 +1074,37 @@ def create_animated_architecture(G):
                             [
                                 f"frame{len(nodes)}"
                             ],
-
                             {
                                 "frame": {
                                     "duration": 500,
-                                    "redraw": True
+                                    "redraw": True,
                                 },
-
                                 "transition": {
-                                    "duration": 300
-                                }
-                            }
-                        ]
-                    )
-                ]
+                                    "duration": 300,
+                                },
+                            },
+                        ],
+                    ),
+                ],
             )
-        ]
+        ],
     )
 
     st.plotly_chart(
         fig,
-        use_container_width=True
+        use_container_width=True,
     )
 
     col1, col2, col3 = st.columns(3)
 
     col1.metric(
         "Modules",
-        G.number_of_nodes()
+        G.number_of_nodes(),
     )
 
     col2.metric(
         "Dependencies",
-        G.number_of_edges()
+        G.number_of_edges(),
     )
 
     density = (
@@ -485,7 +1115,7 @@ def create_animated_architecture(G):
 
     col3.metric(
         "Graph Density",
-        f"{density:.2f}"
+        f"{density:.2f}",
     )
 
     st.info(
@@ -495,18 +1125,23 @@ def create_animated_architecture(G):
     )
 
 
-# ─────────────────────────────────────────────────────────────
-# GITHUB REPOSITORY HELPERS
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# GITHUB HELPERS
+# ============================================================
 
 def get_github_repository_overview(
     repo_path,
-    github_url
+    github_url,
 ):
+    """
+    Return basic GitHub repository information.
+    """
 
     repo = Repo(repo_path)
 
-    repo_name = Path(repo_path).name
+    repo_name = Path(
+        repo_path
+    ).name
 
     clean_url = (
         github_url
@@ -515,6 +1150,7 @@ def get_github_repository_overview(
     )
 
     if clean_url.endswith(".git"):
+
         clean_url = clean_url[:-4]
 
     parts = clean_url.split("/")
@@ -545,6 +1181,17 @@ def get_github_repository_overview(
 
         branch = "Unknown"
 
+    try:
+
+        commit_count = sum(
+            1
+            for _ in repo.iter_commits("--all")
+        )
+
+    except Exception:
+
+        commit_count = 0
+
     return {
 
         "name": repo_name,
@@ -555,20 +1202,17 @@ def get_github_repository_overview(
 
         "url": github_url.strip(),
 
-        "commit_count":
-            sum(
-                1
-                for _ in repo.iter_commits(
-                    "--all"
-                )
-            ),
+        "commit_count": commit_count,
     }
 
 
 def get_recent_commits(
     repo_path,
-    limit=10
+    limit=10,
 ):
+    """
+    Return recent commits with changed files.
+    """
 
     repo = Repo(repo_path)
 
@@ -576,7 +1220,7 @@ def get_recent_commits(
 
     for commit in repo.iter_commits(
         "--all",
-        max_count=limit
+        max_count=limit,
     ):
 
         changed_files = set()
@@ -589,15 +1233,17 @@ def get_recent_commits(
 
                 for diff in parent.diff(
                     commit,
-                    create_patch=False
+                    create_patch=False,
                 ):
 
                     if diff.a_path:
+
                         changed_files.add(
                             diff.a_path
                         )
 
                     if diff.b_path:
+
                         changed_files.add(
                             diff.b_path
                         )
@@ -652,14 +1298,13 @@ def get_recent_commits(
     return commits
 
 
-# ─────────────────────────────────────────────────────────────
-# ARCHITECTURE TIME MACHINE HELPERS
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# ARCHITECTURE TIME MACHINE
+# ============================================================
 
 def get_commit_hash(repo_path):
-
     """
-    Return the currently checked-out commit SHA.
+    Return currently checked-out commit SHA.
     """
 
     try:
@@ -680,6 +1325,7 @@ def get_commit_short_hash(repo_path):
     )
 
     if commit_hash == "unknown":
+
         return commit_hash
 
     return commit_hash[:7]
@@ -687,15 +1333,13 @@ def get_commit_short_hash(repo_path):
 
 def parse_repository_at_commit(
     repo_path,
-    commit_hash
+    commit_hash,
 ):
-
     """
-    Checkout a specific Git commit, parse its Python files,
-    and restore the original repository state afterward.
+    Checkout a Git commit, parse Python files,
+    and restore the original repository state.
 
     Returns:
-
         parsed_results
         source_contents
         file_paths
@@ -721,10 +1365,9 @@ def parse_repository_at_commit(
 
         original_branch = None
 
-    temp_paths = []
-
     parsed_results = []
     source_contents = []
+    file_paths = []
 
     try:
 
@@ -732,7 +1375,7 @@ def parse_repository_at_commit(
             commit_hash
         )
 
-        python_files = find_python_files(
+        python_files = get_python_files(
             repo_path
         )
 
@@ -744,14 +1387,14 @@ def parse_repository_at_commit(
                     file_path,
                     "r",
                     encoding="utf-8",
-                    errors="replace"
+                    errors="replace",
                 ) as f:
 
                     source = f.read()
 
-                parsed = ast.parse(
+                tree = ast.parse(
                     source,
-                    filename=file_path
+                    filename=file_path,
                 )
 
                 parsed_results.append({
@@ -759,21 +1402,21 @@ def parse_repository_at_commit(
                     "file":
                         os.path.relpath(
                             file_path,
-                            repo_path
+                            repo_path,
                         ),
 
                     "tree":
-                        parsed,
+                        tree,
 
                     "source":
-                        source
+                        source,
                 })
 
                 source_contents.append(
                     source
                 )
 
-                temp_paths.append(
+                file_paths.append(
                     file_path
                 )
 
@@ -784,7 +1427,7 @@ def parse_repository_at_commit(
         return (
             parsed_results,
             source_contents,
-            temp_paths
+            file_paths,
         )
 
     finally:
@@ -812,116 +1455,98 @@ def parse_repository_at_commit(
                 )
 
             except Exception:
-
                 pass
 
 
 def recover_architecture_from_commit(
     repo_path,
-    commit_hash
+    commit_hash,
 ):
+    """
+    Recover ArchitectureSnapshot for a Git commit.
+    """
 
-    """
-    Recover an ArchitectureSnapshot for a Git commit.
-    """
+    if not ARCHITECTURE_MODEL_AVAILABLE:
+
+        raise RuntimeError(
+            "architecture_model package is not available."
+        )
 
     parsed_results = []
 
+    repo = Repo(repo_path)
+
+    original_commit = (
+        repo.head.commit.hexsha
+    )
+
+    original_branch = None
+
     try:
 
-        repo = Repo(repo_path)
+        if not repo.head.is_detached:
 
-        original_commit = (
-            repo.head.commit.hexsha
-        )
+            original_branch = (
+                repo.active_branch.name
+            )
+
+    except Exception:
 
         original_branch = None
 
-        try:
+    try:
 
-            if not repo.head.is_detached:
+        repo.git.checkout(
+            commit_hash
+        )
 
-                original_branch = (
-                    repo.active_branch.name
-                )
+        python_files = get_python_files(
+            repo_path
+        )
 
-        except Exception:
-
-            pass
-
-        try:
-
-            repo.git.checkout(
-                commit_hash
-            )
-
-            python_files = find_python_files(
-                repo_path
-            )
-
-            for file_path in python_files:
-
-                try:
-
-                    with open(
-                        file_path,
-                        "r",
-                        encoding="utf-8",
-                        errors="replace"
-                    ) as f:
-
-                        source = f.read()
-
-                    tree = ast.parse(
-                        source,
-                        filename=file_path
-                    )
-
-                    parsed_results.append({
-
-                        "file":
-                            os.path.relpath(
-                                file_path,
-                                repo_path
-                            ),
-
-                        "tree":
-                            tree,
-
-                        "source":
-                            source
-                    })
-
-                except Exception:
-
-                    continue
-
-            snapshot = recover_architecture(
-                parsed_results,
-                commit_hash=commit_hash
-            )
-
-            return snapshot
-
-        finally:
+        for file_path in python_files:
 
             try:
 
-                if original_branch:
+                with open(
+                    file_path,
+                    "r",
+                    encoding="utf-8",
+                    errors="replace",
+                ) as f:
 
-                    repo.git.checkout(
-                        original_branch
-                    )
+                    source = f.read()
 
-                else:
+                tree = ast.parse(
+                    source,
+                    filename=file_path,
+                )
 
-                    repo.git.checkout(
-                        original_commit
-                    )
+                parsed_results.append({
+
+                    "file":
+                        os.path.relpath(
+                            file_path,
+                            repo_path,
+                        ),
+
+                    "tree":
+                        tree,
+
+                    "source":
+                        source,
+                })
 
             except Exception:
 
-                pass
+                continue
+
+        snapshot = recover_architecture(
+            parsed_results,
+            commit_hash=commit_hash,
+        )
+
+        return snapshot
 
     except Exception as e:
 
@@ -929,172 +1554,57 @@ def recover_architecture_from_commit(
             f"Architecture recovery failed: {e}"
         )
 
+    finally:
 
-def snapshot_to_dict(snapshot):
+        try:
 
-    """
-    Convert ArchitectureSnapshot into a dictionary
-    for Streamlit display/session storage.
-    """
+            if original_branch:
 
-    if hasattr(
-        snapshot,
-        "__dict__"
-    ):
-
-        data = dict(
-            snapshot.__dict__
-        )
-
-    else:
-
-        data = {}
-
-        for field in [
-            "version",
-            "commit_hash",
-            "components",
-            "relationships",
-            "metrics",
-            "violations",
-            "timestamp"
-        ]:
-
-            if hasattr(
-                snapshot,
-                field
-            ):
-
-                data[field] = getattr(
-                    snapshot,
-                    field
+                repo.git.checkout(
+                    original_branch
                 )
 
-    return data
+            else:
 
+                repo.git.checkout(
+                    original_commit
+                )
 
-def display_architecture_snapshot(
-    snapshot,
-    title="Architecture Snapshot"
-):
+        except Exception:
 
-    """
-    Display ArchitectureSnapshot in the UI.
-    """
+            try:
 
-    data = snapshot_to_dict(
-        snapshot
-    )
+                repo.git.checkout(
+                    original_commit
+                )
 
-    st.markdown(
-        f"### 🏗️ {title}"
-    )
-
-    commit_hash = data.get(
-        "commit_hash",
-        "unknown"
-    )
-
-    version = data.get(
-        "version",
-        "unknown"
-    )
-
-    timestamp = data.get(
-        "timestamp",
-        None
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric(
-        "Version",
-        str(version)
-    )
-
-    c2.metric(
-        "Commit",
-        str(commit_hash)[:7]
-    )
-
-    metrics = data.get(
-        "metrics",
-        {}
-    )
-
-    c3.metric(
-        "Components",
-        metrics.get(
-            "total_components",
-            0
-        )
-    )
-
-    c4, c5, c6 = st.columns(3)
-
-    c4.metric(
-        "Relationships",
-        metrics.get(
-            "total_relationships",
-            0
-        )
-    )
-
-    c5.metric(
-        "Files",
-        metrics.get(
-            "total_files",
-            0
-        )
-    )
-
-    c6.metric(
-        "Violations",
-        len(
-            data.get(
-                "violations",
-                []
-            )
-        )
-    )
-
-    if timestamp:
-
-        st.caption(
-            f"Snapshot timestamp: {timestamp}"
-        )
-
-    with st.expander(
-        "📦 View Architecture Snapshot Details"
-    ):
-
-        st.json(
-            data,
-            expanded=False
-        )
+            except Exception:
+                pass
 
 
 def architecture_snapshot_to_graph(
-    snapshot
+    snapshot,
 ):
-
     """
-    Convert recovered ArchitectureSnapshot
-    into a NetworkX graph.
+    Convert ArchitectureSnapshot into NetworkX graph.
     """
 
     G = nx.DiGraph()
 
+    if snapshot is None:
+
+        return G
+
     components = getattr(
         snapshot,
         "components",
-        []
+        [],
     )
 
     relationships = getattr(
         snapshot,
         "relationships",
-        []
+        [],
     )
 
     for component in components:
@@ -1102,7 +1612,7 @@ def architecture_snapshot_to_graph(
         name = getattr(
             component,
             "name",
-            str(component)
+            str(component),
         )
 
         G.add_node(
@@ -1114,27 +1624,29 @@ def architecture_snapshot_to_graph(
         source = getattr(
             relationship,
             "source",
-            None
+            None,
         )
 
         target = getattr(
             relationship,
             "target",
-            None
+            None,
         )
 
         if source is None:
+
             source = getattr(
                 relationship,
                 "from_component",
-                None
+                None,
             )
 
         if target is None:
+
             target = getattr(
                 relationship,
                 "to_component",
-                None
+                None,
             )
 
         if source and target:
@@ -1142,57 +1654,260 @@ def architecture_snapshot_to_graph(
             source_name = getattr(
                 source,
                 "name",
-                str(source)
+                str(source),
             )
 
             target_name = getattr(
                 target,
                 "name",
-                str(target)
+                str(target),
             )
 
             G.add_edge(
                 source_name,
-                target_name
+                target_name,
             )
 
     return G
 
 
-# ─────────────────────────────────────────────────────────────
-# FILE UPLOAD / ANALYZER LANDING PAGE
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# NAVIGATION
+# ============================================================
 
-if page == "🏠 Analyzer":
+PAGES = [
+
+    "🏠 Overview",
+
+    "💻 Source Code",
+
+    "🌳 AST Structure",
+
+    "🤖 Structural Analysis",
+
+    "🏗️ Architecture Model",
+
+    "🔗 Dependency Analysis",
+
+    "📊 Architecture Metrics",
+
+    "🧩 Module Boundaries",
+
+    "🔀 Logical Coupling",
+
+    "🔥 Architecture Risk",
+
+    "💰 Architecture Debt",
+
+    "🩺 Architecture Health",
+
+    "🔢 Semantic Embeddings",
+
+    "📂 Repository Input",
+
+    "⏳ Architecture Time Machine",
+]
+
+
+# ============================================================
+# APPLICATION TITLE
+# ============================================================
+
+st.title(
+    "🏗️ Architecture Intelligence System"
+)
+
+st.caption(
+    "Recover, visualize and evaluate software architecture "
+    "from source-code structure and repository evidence."
+)
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
 
     st.markdown(
-        """
-        <div class="hero-banner">
-            <div class="hero-title">🧠 AI Code Analyzer</div>
-            <div class="hero-subtitle">
-                Upload Python source files and explore syntax, semantics,
-                architecture, dependencies, quality and AI-powered insights.
-            </div>
-            <div class="hero-page-badge">🚀 Start with Analyzer</div>
-        </div>
-        """,
+        '<div class="sidebar-logo">🏗️ Architecture Intelligence</div>',
         unsafe_allow_html=True,
     )
 
+    st.caption(
+        "AI-assisted software architecture analysis"
+    )
+
+    st.markdown("---")
+
+    page = st.radio(
+        "Navigation",
+        PAGES,
+        index=PAGES.index(
+            st.session_state.get(
+                "active_page",
+                "🏠 Overview",
+            )
+        ),
+        label_visibility="collapsed",
+        key="active_page",
+    )
+
+    st.markdown("---")
+
     st.markdown(
-        "## 📂 Upload Python Files"
+        "### Project Pipeline"
+    )
+
+    st.markdown(
+        """
+        **Repository**
+
+        ↓
+
+        **AST Analysis**
+
+        ↓
+
+        **Architecture Recovery**
+
+        ↓
+
+        **Dependency Graph**
+
+        ↓
+
+        **Architecture Metrics**
+
+        ↓
+
+        **Governance & Risk**
+
+        ↓
+
+        **Evidence-Grounded AI**
+        """
+    )
+
+
+# ============================================================
+# COMMON PARSING
+# ============================================================
+
+file_paths = []
+parsed_files = []
+all_sources = []
+
+if page not in [
+    "🏠 Overview",
+    "📂 Repository Input",
+    "⏳ Architecture Time Machine",
+]:
+
+    if repository_loaded():
+
+        (
+            file_paths,
+            parsed_files,
+            all_sources,
+        ) = parse_uploaded_files()
+
+
+# ============================================================
+# PAGE 1 — OVERVIEW
+# ============================================================
+
+if page == "🏠 Overview":
+
+    st.header(
+        "🏗️ Software Architecture Intelligence"
     )
 
     st.write(
-        "Upload one or more `.py` files to unlock the analysis features."
+        """
+        This system analyzes a software repository and constructs
+        machine-readable architectural evidence from its source code.
+        """
+    )
+
+    st.markdown(
+        "### Core Objective"
+    )
+
+    st.info(
+        """
+        **Automatically recover and understand the architecture of a
+        software system from source-code structure, dependencies and
+        repository evidence, then measure its architectural characteristics
+        and provide evidence for architectural decisions.**
+        """
+    )
+
+    st.markdown(
+        "### Analysis Pipeline"
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.markdown("### 1️⃣")
+
+        st.markdown(
+            "**Recover**"
+        )
+
+        st.caption(
+            "AST + dependencies → architecture model"
+        )
+
+    with col2:
+
+        st.markdown("### 2️⃣")
+
+        st.markdown(
+            "**Measure**"
+        )
+
+        st.caption(
+            "Coupling, structure, cycles and risk"
+        )
+
+    with col3:
+
+        st.markdown("### 3️⃣")
+
+        st.markdown(
+            "**Govern**"
+        )
+
+        st.caption(
+            "Identify architectural problems"
+        )
+
+    with col4:
+
+        st.markdown("### 4️⃣")
+
+        st.markdown(
+            "**Reason**"
+        )
+
+        st.caption(
+            "Future evidence-grounded RAG"
+        )
+
+    st.divider()
+
+    st.markdown(
+        "### 📂 Upload Repository Files"
     )
 
     new_uploads = st.file_uploader(
-        "Choose Python files",
+        "Upload Python files",
         type=["py"],
         accept_multiple_files=True,
-        key="python_file_uploader",
-        help="You can upload multiple Python files at once.",
+        key="overview_python_upload",
     )
 
     if new_uploads:
@@ -1202,320 +1917,106 @@ if page == "🏠 Analyzer":
         ] = [
 
             {
-                "name": f.name,
-                "data": f.getvalue()
+                "name": file.name,
+                "data": file.getvalue(),
             }
 
-            for f in new_uploads
+            for file in new_uploads
         ]
 
-    if st.session_state.get(
-        "uploaded_file_data"
-    ):
+        # Clear repository-based state when using direct uploads.
+        st.session_state[
+            "repository_file_paths"
+        ] = []
 
-        names = [
+        st.session_state[
+            "repository_local_path"
+        ] = None
 
-            item["name"]
+        st.session_state[
+            "github_repo_path"
+        ] = None
 
-            for item in
-            st.session_state[
-                "uploaded_file_data"
-            ]
-        ]
+        st.session_state[
+            "repository_source"
+        ] = "Python Upload"
+
+    uploaded_files = st.session_state.get(
+        "uploaded_file_data",
+        [],
+    )
+
+    if uploaded_files:
 
         st.success(
-            f"✅ {len(names)} Python file(s) ready for analysis."
+            f"✅ {len(uploaded_files)} Python file(s) ready."
         )
 
         with st.expander(
             "View uploaded files"
         ):
 
-            for name in names:
+            for item in uploaded_files:
 
                 st.write(
-                    f"📄 {name}"
+                    f"📄 {item['name']}"
                 )
 
     else:
 
         st.info(
-            "👆 Upload a Python file here. "
-            "The other features remain visible in "
-            "the left navigation and will ask for files "
-            "when they need them."
+            "Upload one or more Python files or use "
+            "**📂 Repository Input** for a complete repository."
         )
-
-    st.markdown(
-        "### 🔍 What you can analyze"
-    )
-
-    a1, a2, a3 = st.columns(3)
-
-    with a1:
-
-        st.markdown(
-            "**🌳 Structure**"
-        )
-
-        st.caption(
-            "AST, source code and dependencies"
-        )
-
-    with a2:
-
-        st.markdown(
-            "**🤖 Intelligence**"
-        )
-
-        st.caption(
-            "Semantic analysis, explanation and review"
-        )
-
-    with a3:
-
-        st.markdown(
-            "**🏗️ Architecture**"
-        )
-
-        st.caption(
-            "Architecture, risks, clones and impact"
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# TEMPORARY FILES
-# ─────────────────────────────────────────────────────────────
-
-file_paths = []
-
-uploaded_files = st.session_state.get(
-    "uploaded_file_data",
-    []
-)
-
-for item in uploaded_files:
-
-    tmp = tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=".py"
-    )
-
-    tmp.write(
-        item["data"]
-    )
-
-    tmp.close()
-
-    file_paths.append(
-        tmp.name
-    )
-
-
-def require_uploaded_files():
-
-    if not uploaded_files:
-
-        st.warning(
-            "📂 Please open **🏠 Analyzer** in the left menu "
-            "and upload at least one Python file first."
-        )
-
-        st.stop()
-
-
-# ─────────────────────────────────────────────────────────────
-# PARSE FILES
-# ─────────────────────────────────────────────────────────────
-
-parsed_files = []
-
-all_sources = []
-
-for path in file_paths:
-
-    try:
-
-        parsed_files.append(
-            parse_file(path)
-        )
-
-        all_sources.append(
-            read_file(path)
-        )
-
-    except Exception as e:
-
-        st.warning(
-            f"Could not parse `{path}`: {e}"
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# GITHUB REPOSITORY ANALYZER
-# ─────────────────────────────────────────────────────────────
-
-if page == "🏠 Analyzer" and uploaded_files:
-
-    total_functions = sum(
-        get_summary(parsed)["total_functions"]
-        for parsed in parsed_files
-    )
-
-    total_classes = sum(
-        get_summary(parsed)["total_classes"]
-        for parsed in parsed_files
-    )
-
-    total_imports = sum(
-        get_summary(parsed)["total_imports"]
-        for parsed in parsed_files
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "Functions",
-        total_functions
-    )
-
-    c2.metric(
-        "Classes",
-        total_classes
-    )
-
-    c3.metric(
-        "Imports",
-        total_imports
-    )
-
-    c4.metric(
-        "Files",
-        len(file_paths)
-    )
 
     st.divider()
 
-
-if page == "🏠 Analyzer":
-
     st.markdown(
-        "### 🐙 Analyze a GitHub Repository (optional)"
+        """
+        ### Current Project Scope
+
+        **Architecture Recovery**
+
+        →
+
+        **Persistent Architecture Model**
+
+        →
+
+        **Dependency Analysis**
+
+        →
+
+        **Architecture Metrics**
+
+        →
+
+        **Architecture Governance**
+
+        →
+
+        **Architecture Risk / Debt**
+
+        →
+
+        **Git Evolution**
+
+        →
+
+        **Architecture-aware RAG**
+
+        →
+
+        **What-if Simulation**
+        """
     )
 
-    st.caption(
-        "Paste a public GitHub repository link and click Analyze. "
-        "The result is reused by Git Analysis, Logical Coupling, "
-        "Risk Hotspots, Change Impact and Architecture Time Machine."
-    )
 
-    gh_col1, gh_col2 = st.columns(
-        [4, 1]
-    )
+# ============================================================
+# PAGE 2 — SOURCE CODE
+# ============================================================
 
-    github_url = gh_col1.text_input(
-        "GitHub Repository URL",
-        value=st.session_state.get(
-            "github_repo_url",
-            ""
-        ),
-        placeholder=(
-            "https://github.com/username/repository"
-        ),
-        label_visibility="collapsed",
-    )
-
-    analyze_clicked = gh_col2.button(
-        "🚀 Analyze Repo",
-        use_container_width=True
-    )
-
-    if analyze_clicked:
-
-        if not github_url.strip():
-
-            st.warning(
-                "Please enter a GitHub repository URL."
-            )
-
-        else:
-
-            try:
-
-                with st.spinner(
-                    "Cloning GitHub repository..."
-                ):
-
-                    repo_path = clone_github_repository(
-                        github_url.strip()
-                    )
-
-                st.session_state[
-                    "github_repo_path"
-                ] = repo_path
-
-                st.session_state[
-                    "github_repo_url"
-                ] = github_url.strip()
-
-                st.session_state[
-                    "github_repo_info"
-                ] = get_repository_info(
-                    repo_path
-                )
-
-                st.session_state[
-                    "github_repo_overview"
-                ] = get_github_repository_overview(
-                    repo_path,
-                    github_url
-                )
-
-                st.session_state[
-                    "github_repo_commits"
-                ] = get_recent_commits(
-                    repo_path,
-                    limit=10
-                )
-
-                st.session_state[
-                    "github_repo_python_files"
-                ] = find_python_files(
-                    repo_path
-                )
-
-                # Clear old architecture snapshots
-                st.session_state[
-                    "architecture_snapshots"
-                ] = []
-
-                st.success(
-                    "✅ Repository cloned and analyzed. "
-                    "Open **🐙 Git Analysis** or "
-                    "**⏳ Architecture Time Machine** from the left menu."
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"❌ Repository analysis failed: {e}"
-                )
-
-                st.exception(e)
-
-    if "github_repo_path" in st.session_state:
-
-        st.caption(
-            "✅ Currently analyzing: "
-            f"`{st.session_state['github_repo_url']}`"
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# CODE VIEWER
-# ─────────────────────────────────────────────────────────────
-
-if page == "💻 Code":
+if page == "💻 Source Code":
 
     require_uploaded_files()
 
@@ -1523,25 +2024,45 @@ if page == "💻 Code":
         "💻 Source Code"
     )
 
-    for i, code in enumerate(
+    if not all_sources:
+
+        st.warning(
+            "No readable Python source files were found."
+        )
+
+    for index, source in enumerate(
         all_sources
     ):
 
+        if st.session_state.get(
+            "repository_file_paths"
+        ):
+
+            name = get_relative_file_name(
+                file_paths[index]
+            )
+
+        else:
+
+            name = st.session_state[
+                "uploaded_file_data"
+            ][index]["name"]
+
         st.subheader(
-            f"File {i + 1}"
+            name
         )
 
         st.code(
-            code,
-            language="python"
+            source,
+            language="python",
         )
 
 
-# ─────────────────────────────────────────────────────────────
-# AST
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# PAGE 3 — AST
+# ============================================================
 
-if page == "🌳 AST":
+if page == "🌳 AST Structure":
 
     require_uploaded_files()
 
@@ -1549,2297 +2070,1564 @@ if page == "🌳 AST":
         "🌳 Abstract Syntax Tree"
     )
 
-    st.json(
-        parsed_files
-    )
-
-
-# ─────────────────────────────────────────────────────────────
-# AI ANALYSIS
-# ─────────────────────────────────────────────────────────────
-
-if page == "🤖 AI Analysis":
-
-    require_uploaded_files()
-
-    st.header(
-        "🤖 AI Code Analysis"
-    )
-
     st.caption(
-        "AI-powered analysis of syntax, semantics, logic, "
-        "runtime risks, security, performance, code quality "
-        "and possible improvements."
+        "Structural representation extracted from Python source code."
     )
 
-    file_names = []
+    if parsed_files:
 
-    for item in uploaded_files:
-
-        if isinstance(
-            item,
-            dict
-        ):
-
-            file_names.append(
-                item.get(
-                    "name",
-                    "Unknown File"
+        selected = st.selectbox(
+            "Select file",
+            range(len(parsed_files)),
+            format_func=lambda i:
+                get_relative_file_name(
+                    file_paths[i]
                 )
+                if st.session_state.get(
+                    "repository_file_paths"
+                )
+                else st.session_state[
+                    "uploaded_file_data"
+                ][i]["name"],
+        )
+
+        parsed = parsed_files[selected]
+
+        # Do not directly pass Python AST objects to st.json().
+        # Convert them into a readable AST dump.
+        if isinstance(parsed, dict):
+
+            ast_tree = parsed.get(
+                "tree"
             )
 
-        elif hasattr(
-            item,
-            "name"
-        ):
+            if isinstance(
+                ast_tree,
+                ast.AST,
+            ):
 
-            file_names.append(
-                item.name
-            )
+                st.code(
+                    ast.dump(
+                        ast_tree,
+                        indent=2,
+                    ),
+                    language="text",
+                )
+
+            else:
+
+                st.write(
+                    parsed
+                )
 
         else:
 
-            file_names.append(
-                str(item)
+            st.write(
+                parsed
             )
 
-    if not file_names:
+    else:
 
         st.warning(
-            "📂 No Python files are available for analysis."
+            "No parsed Python files available."
         )
 
-        st.stop()
 
-    selected_index = st.selectbox(
-        "📄 Select file to analyze",
-        range(len(file_names)),
-        format_func=lambda i: file_names[i],
-        key="ai_selected_file",
-    )
+# ============================================================
+# PAGE 4 — STRUCTURAL ANALYSIS
+# ============================================================
 
-    selected_file = file_names[
-        selected_index
-    ]
-
-    selected_code = all_sources[
-        selected_index
-    ]
-
-    selected_parsed = parsed_files[
-        selected_index
-    ]
-
-    st.markdown(
-        f"""
-        <div class="ai-file-card">
-
-            <div class="ai-file-title">
-                📄 {selected_file}
-            </div>
-
-            <div class="ai-file-subtitle">
-                Ready for intelligent AI analysis
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    analyze_ai = st.button(
-        "🤖 Run Complete AI Analysis",
-        use_container_width=True,
-        type="primary",
-        key="run_complete_ai_analysis",
-    )
-
-    if analyze_ai:
-
-        with st.spinner(
-            "🧠 AI is analyzing your code..."
-        ):
-
-            try:
-
-                result = analyze_parsed_result(
-                    selected_parsed,
-                    selected_code
-                )
-
-                st.session_state[
-                    "ai_analysis_result"
-                ] = result
-
-                st.session_state[
-                    "ai_analysis_file"
-                ] = selected_file
-
-                st.session_state[
-                    "ai_analysis_code"
-                ] = selected_code
-
-            except Exception as e:
-
-                st.error(
-                    f"❌ AI analysis failed: {e}"
-                )
-
-                st.exception(e)
-
-                st.stop()
-
-    if (
-        "ai_analysis_result"
-        not in st.session_state
-    ):
-
-        st.info(
-            "👆 Select a Python file and click "
-            "**Run Complete AI Analysis**."
-        )
-
-        st.markdown(
-            "### 🔍 What will be analyzed"
-        )
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-
-            st.markdown(
-                "### 🧠 Semantic Analysis"
-            )
-
-            st.caption(
-                "Understand what the code is intended "
-                "to do and identify meaning-related issues."
-            )
-
-        with c2:
-
-            st.markdown(
-                "### ⚠️ Error & Risk Detection"
-            )
-
-            st.caption(
-                "Look for syntax, runtime, logical, "
-                "security and other potential problems."
-            )
-
-        with c3:
-
-            st.markdown(
-                "### 💡 Improvements"
-            )
-
-            st.caption(
-                "Get AI suggestions for cleaner, safer "
-                "and more maintainable code."
-            )
-
-        st.divider()
-
-        st.markdown(
-            "### 📋 Analysis Categories"
-        )
-
-        category_col1, category_col2 = st.columns(2)
-
-        with category_col1:
-
-            st.markdown(
-                """
-                - 📝 Syntax
-                - 🧠 Semantic
-                - ⚠️ Runtime
-                - 🔀 Logical
-                """
-            )
-
-        with category_col2:
-
-            st.markdown(
-                """
-                - 🔐 Security
-                - ⚡ Performance
-                - 🧹 Code Quality
-                - 💡 Suggestions
-                """
-            )
-
-        st.stop()
-
-    result = st.session_state[
-        "ai_analysis_result"
-    ]
-
-    analyzed_file = st.session_state.get(
-        "ai_analysis_file",
-        selected_file
-    )
-
-    analyzed_code = st.session_state.get(
-        "ai_analysis_code",
-        selected_code
-    )
-
-    st.success(
-        f"✅ Analysis completed for `{analyzed_file}`"
-    )
-
-    st.markdown(
-        "## 📊 Analysis Overview"
-    )
-
-    if isinstance(
-        result,
-        dict
-    ):
-
-        summary = result.get(
-            "summary",
-            result.get(
-                "analysis",
-                ""
-            )
-        )
-
-        overall_status = result.get(
-            "overall_status",
-            "Not Available"
-        )
-
-        overall_confidence = result.get(
-            "confidence",
-            0
-        )
-
-        issues = result.get(
-            "issues",
-            result.get(
-                "errors",
-                []
-            )
-        )
-
-        suggestions = result.get(
-            "suggestions",
-            result.get(
-                "recommendations",
-                []
-            )
-        )
-
-        explanation = result.get(
-            "explanation",
-            result.get(
-                "details",
-                ""
-            )
-        )
-
-        execution_flow = result.get(
-            "execution_flow",
-            []
-        )
-
-    else:
-
-        summary = str(result)
-
-        overall_status = (
-            "Needs Improvement"
-        )
-
-        overall_confidence = 0
-
-        issues = []
-
-        suggestions = []
-
-        explanation = ""
-
-        execution_flow = []
-
-    if not isinstance(
-        issues,
-        list
-    ):
-
-        issues = [issues]
-
-    if not isinstance(
-        suggestions,
-        list
-    ):
-
-        suggestions = [suggestions]
-
-    total_issues = len(
-        issues
-    )
-
-    total_suggestions = len(
-        suggestions
-    )
-
-    total_lines = len(
-        analyzed_code.splitlines()
-    )
-
-    status_text = str(
-        overall_status
-    ).lower()
-
-    if "critical" in status_text:
-
-        status_icon = "🔴"
-
-    elif "improvement" in status_text:
-
-        status_icon = "🟡"
-
-    elif "good" in status_text:
-
-        status_icon = "🟢"
-
-    else:
-
-        status_icon = "🔵"
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "🚨 Issues",
-        total_issues
-    )
-
-    c2.metric(
-        "💡 Suggestions",
-        total_suggestions
-    )
-
-    c3.metric(
-        "📄 Lines",
-        total_lines
-    )
-
-    c4.metric(
-        "🎯 Confidence",
-        f"{overall_confidence}%"
-    )
-
-    st.markdown(
-        f"""
-        ### {status_icon} Overall Status
-
-        **{overall_status}**
-        """
-    )
-
-    st.divider()
-
-    st.subheader(
-        "🧠 AI Summary"
-    )
-
-    if summary:
-
-        if isinstance(
-            summary,
-            (dict, list)
-        ):
-
-            st.json(
-                summary
-            )
-
-        else:
-
-            st.markdown(
-                str(summary)
-            )
-
-    else:
-
-        st.info(
-            "The AI did not return a separate summary."
-        )
-
-    st.subheader(
-        "🚨 Issues Detected"
-    )
-
-    if issues:
-
-        for i, issue in enumerate(
-            issues,
-            1
-        ):
-
-            if isinstance(
-                issue,
-                dict
-            ):
-
-                issue_type = issue.get(
-                    "type",
-                    "Issue"
-                )
-
-                severity = issue.get(
-                    "severity",
-                    "Medium"
-                )
-
-                line = issue.get(
-                    "line",
-                    issue.get(
-                        "line_number",
-                        "N/A"
-                    )
-                )
-
-                title = issue.get(
-                    "title",
-                    f"Issue {i}"
-                )
-
-                description = issue.get(
-                    "description",
-                    issue.get(
-                        "problem",
-                        "No description provided."
-                    )
-                )
-
-                why = issue.get(
-                    "why",
-                    ""
-                )
-
-                fix = issue.get(
-                    "fix",
-                    issue.get(
-                        "suggestion",
-                        ""
-                    )
-                )
-
-                confidence = issue.get(
-                    "confidence",
-                    0
-                )
-
-                with st.expander(
-                    f"🚨 {title} | "
-                    f"{issue_type} | "
-                    f"{severity} | "
-                    f"Line {line}"
-                ):
-
-                    st.markdown(
-                        f"**Type:** {issue_type}"
-                    )
-
-                    st.markdown(
-                        f"**Severity:** {severity}"
-                    )
-
-                    st.markdown(
-                        f"**Line:** {line}"
-                    )
-
-                    if confidence:
-
-                        st.markdown(
-                            f"**AI Confidence:** "
-                            f"{confidence}%"
-                        )
-
-                    st.markdown(
-                        "### ❌ Problem"
-                    )
-
-                    st.write(
-                        description
-                    )
-
-                    if why:
-
-                        st.markdown(
-                            "### ❓ Why is this a problem?"
-                        )
-
-                        st.write(
-                            why
-                        )
-
-                    if fix:
-
-                        st.markdown(
-                            "### 💡 Suggested Fix"
-                        )
-
-                        st.info(
-                            fix
-                        )
-
-            else:
-
-                with st.expander(
-                    f"🚨 Issue {i}"
-                ):
-
-                    st.write(
-                        issue
-                    )
-
-    else:
-
-        st.success(
-            "✅ No issues were identified by the AI."
-        )
-
-    st.subheader(
-        "💡 AI Improvement Suggestions"
-    )
-
-    if suggestions:
-
-        for i, suggestion in enumerate(
-            suggestions,
-            1
-        ):
-
-            if isinstance(
-                suggestion,
-                dict
-            ):
-
-                title = suggestion.get(
-                    "title",
-                    f"Suggestion {i}"
-                )
-
-                description = suggestion.get(
-                    "description",
-                    suggestion.get(
-                        "suggestion",
-                        "No description provided."
-                    )
-                )
-
-                priority = suggestion.get(
-                    "priority",
-                    "Medium"
-                )
-
-                with st.expander(
-                    f"💡 {title} | "
-                    f"Priority: {priority}"
-                ):
-
-                    st.write(
-                        description
-                    )
-
-            else:
-
-                st.markdown(
-                    f"**{i}.** {suggestion}"
-                )
-
-    else:
-
-        st.info(
-            "No improvement suggestions were returned."
-        )
-
-    if execution_flow:
-
-        st.subheader(
-            "▶️ AI Execution Flow"
-        )
-
-        for i, step in enumerate(
-            execution_flow,
-            1
-        ):
-
-            st.markdown(
-                f"""
-                **Step {i}**
-
-                {step}
-                """
-            )
-
-    if explanation:
-
-        st.subheader(
-            "📖 AI Explanation"
-        )
-
-        with st.expander(
-            "Show detailed explanation",
-            expanded=True
-        ):
-
-            if isinstance(
-                explanation,
-                (dict, list)
-            ):
-
-                st.json(
-                    explanation
-                )
-
-            else:
-
-                st.markdown(
-                    str(explanation)
-                )
-
-    st.subheader(
-        "💻 Analyzed Source Code"
-    )
-
-    with st.expander(
-        "View source code"
-    ):
-
-        st.code(
-            analyzed_code,
-            language="python"
-        )
-
-    st.divider()
-
-    if st.button(
-        "🔄 Clear AI Analysis & Run Again",
-        key="clear_ai_analysis",
-        use_container_width=True
-    ):
-
-        st.session_state.pop(
-            "ai_analysis_result",
-            None
-        )
-
-        st.session_state.pop(
-            "ai_analysis_file",
-            None
-        )
-
-        st.session_state.pop(
-            "ai_analysis_code",
-            None
-        )
-
-        st.rerun()
-
-
-# ─────────────────────────────────────────────────────────────
-# INTERACTIVE ARCHITECTURE
-# ─────────────────────────────────────────────────────────────
-
-if page == "🏗️ Architecture":
+if page == "🤖 Structural Analysis":
 
     require_uploaded_files()
 
     st.header(
-        "🏗️ Interactive Software Architecture"
+        "🤖 Structural Analysis"
     )
 
     st.write(
-        "Generate an interactive architecture map of your codebase."
+        """
+        Analyze source-code structure using the project's parser
+        and analyzer. This is structural evidence, not generic
+        AI code generation.
+        """
     )
 
-    if st.button(
-        "🚀 Generate Architecture",
-        key="architecture"
-    ):
+    if not parsed_files:
 
-        G = build_graph(
-            parsed_files
+        st.warning(
+            "No parsed files available."
         )
 
-        create_animated_architecture(
-            G
-        )
-
-    st.divider()
-
-    st.markdown(
-        "### 📦 Architecture Snapshot"
-    )
-
-    st.caption(
-        "Create a persistent architecture snapshot for the uploaded code."
-    )
-
-    if st.button(
-        "📸 Create Architecture Snapshot",
-        key="create_uploaded_architecture_snapshot"
+    elif st.button(
+        "Run Structural Analysis",
+        type="primary",
     ):
 
         try:
 
-            snapshot = recover_architecture(
-                parsed_files,
-                commit_hash="uploaded-code"
-            )
+            # Existing analyzer is retained.
+            # For multi-file repositories, analyze every parsed file.
+            results = []
 
-            st.session_state[
-                "latest_architecture_snapshot"
-            ] = snapshot
-
-            if (
-                "architecture_snapshots"
-                not in st.session_state
+            for index, parsed in enumerate(
+                parsed_files
             ):
 
-                st.session_state[
-                    "architecture_snapshots"
-                ] = []
+                try:
 
-            st.session_state[
-                "architecture_snapshots"
-            ].append(
-                snapshot
-            )
+                    result = analyze_parsed_result(
+                        parsed,
+                        all_sources[index],
+                    )
+
+                    results.append({
+
+                        "file":
+                            get_relative_file_name(
+                                file_paths[index]
+                            ),
+
+                        "analysis":
+                            result,
+                    })
+
+                except Exception as file_error:
+
+                    results.append({
+
+                        "file":
+                            get_relative_file_name(
+                                file_paths[index]
+                            ),
+
+                        "error":
+                            str(file_error),
+                    })
 
             st.success(
-                "✅ Architecture snapshot created."
+                "Structural analysis completed."
             )
 
-            display_architecture_snapshot(
-                snapshot,
-                "Current Architecture Snapshot"
-            )
+            for item in results:
+
+                with st.expander(
+                    f"📄 {item['file']}"
+                ):
+
+                    if "error" in item:
+
+                        st.error(
+                            item["error"]
+                        )
+
+                    else:
+
+                        result = item["analysis"]
+
+                        if isinstance(
+                            result,
+                            (dict, list),
+                        ):
+
+                            st.json(
+                                result
+                            )
+
+                        else:
+
+                            st.write(
+                                result
+                            )
 
         except Exception as e:
 
             st.error(
-                f"❌ Could not create architecture snapshot: {e}"
+                f"Analysis failed: {e}"
+            )
+
+
+# ============================================================
+# PAGE 5 — ARCHITECTURE MODEL
+# ============================================================
+
+if page == "🏗️ Architecture Model":
+
+    require_uploaded_files()
+
+    st.header(
+        "🏗️ Architecture Model"
+    )
+
+    st.write(
+        """
+        Recover a machine-readable representation of the
+        architecture from the uploaded source code.
+        """
+    )
+
+    if st.button(
+        "🚀 Recover Architecture",
+        type="primary",
+    ):
+
+        try:
+
+            G = build_graph(
+                parsed_files
+            )
+
+            st.markdown(
+                "### Architecture Graph"
+            )
+
+            create_architecture_graph(
+                G
+            )
+
+            st.divider()
+
+            if ARCHITECTURE_MODEL_AVAILABLE:
+
+                snapshot = recover_architecture(
+                    parsed_files,
+                    commit_hash="uploaded-code",
+                )
+
+                st.session_state[
+                    "latest_architecture_snapshot"
+                ] = snapshot
+
+                st.session_state[
+                    "architecture_snapshots"
+                ].append(
+                    snapshot
+                )
+
+                st.success(
+                    "✅ Persistent architecture snapshot created."
+                )
+
+                display_architecture_snapshot(
+                    snapshot,
+                    "Current Architecture Snapshot",
+                )
+
+            else:
+
+                st.warning(
+                    "architecture_model package is not available. "
+                    "The graph was recovered successfully, but a "
+                    "persistent ArchitectureSnapshot could not be created."
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"Architecture recovery failed: {e}"
             )
 
             st.exception(e)
 
 
-# ─────────────────────────────────────────────────────────────
-# EMBEDDINGS
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# PAGE 6 — DEPENDENCY ANALYSIS
+# ============================================================
 
-if page == "🔢 Embeddings":
+if page == "🔗 Dependency Analysis":
 
     require_uploaded_files()
 
     st.header(
-        "🔢 Semantic Embeddings"
+        "🔗 Dependency Analysis"
     )
 
-    if st.button(
-        "Generate Embeddings",
-        key="embeddings"
-    ):
-
-        emb = embed_parsed_result(
-            parsed_files[0]
-        )
-
-        st.write(
-            emb[:10]
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# TEST GENERATION
-# ─────────────────────────────────────────────────────────────
-
-if page == "🧪 Tests":
-
-    require_uploaded_files()
-
-    st.header(
-        "🧪 Test Generator"
-    )
-
-    if st.button(
-        "Generate Tests",
-        key="tests"
-    ):
-
-        tests = generate_tests_for_file(
-            parsed_files[0],
-            all_sources[0]
-        )
-
-        st.code(
-            tests,
-            language="python"
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# REFACTOR
-# ─────────────────────────────────────────────────────────────
-
-if page == "🔧 Refactor":
-
-    require_uploaded_files()
-
-    st.header(
-        "🔧 Refactoring Suggestions"
-    )
-
-    if st.button(
-        "Refactor Code",
-        key="refactor"
-    ):
-
-        results = refactor_all_functions(
-            parsed_files[0],
-            all_sources[0]
-        )
-
-        if not results:
-
-            st.info(
-                "No refactoring suggestions found."
-            )
-
-        else:
-
-            for result in results:
-
-                if "result" in result:
-
-                    refactored = result[
-                        "result"
-                    ]
-
-                    if (
-                        isinstance(
-                            refactored,
-                            dict
-                        )
-                        and
-                        "refactored_code"
-                        in refactored
-                    ):
-
-                        st.code(
-                            refactored[
-                                "refactored_code"
-                            ],
-                            language="python"
-                        )
-
-                    else:
-
-                        st.write(
-                            refactored
-                        )
-
-
-# ─────────────────────────────────────────────────────────────
-# DOCUMENTATION
-# ─────────────────────────────────────────────────────────────
-
-if page == "📚 Docs":
-
-    require_uploaded_files()
-
-    st.header(
-        "📚 Documentation Generator"
-    )
-
-    if st.button(
-        "Generate Documentation",
-        key="documentation"
-    ):
-
-        readme = generate_readme(
-            parsed_files
-        )
-
-        report = build_complexity_report(
-            parsed_files
-        )
-
-        st.markdown(
-            readme
-        )
-
-        st.divider()
-
-        st.markdown(
-            report
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# DEPENDENCY GRAPH
-# ─────────────────────────────────────────────────────────────
-
-if page == "🔗 Dependency Graph":
-
-    require_uploaded_files()
-
-    st.header(
-        "🔗 Dependency Graph"
+    st.write(
+        """
+        Recover direct dependencies between files/modules
+        and inspect the resulting dependency graph.
+        """
     )
 
     if st.button(
         "Generate Dependency Graph",
-        key="dependency"
+        type="primary",
     ):
 
-        G = nx.DiGraph()
+        G = build_combined_dependency_graph(
+            file_paths
+        )
 
-        for path in file_paths:
+        if G.number_of_nodes() == 0:
 
-            subgraph = build_dependency_graph(
-                path
+            st.warning(
+                "No dependencies detected."
             )
 
-            G = nx.compose(
-                G,
-                subgraph
+        else:
+
+            create_architecture_graph(
+                G
             )
 
-        os.makedirs(
-            "outputs",
-            exist_ok=True
-        )
+            cycles = list(
+                nx.simple_cycles(G)
+            )
 
-        output_path = os.path.join(
-            "outputs",
-            "dependency.png"
-        )
+            st.subheader(
+                "Circular Dependencies"
+            )
 
-        draw_dependency_graph(
-            G,
-            output_path
-        )
+            if cycles:
 
-        st.image(
-            output_path
-        )
+                st.error(
+                    f"⚠️ {len(cycles)} circular dependency "
+                    f"cycle(s) detected."
+                )
 
-        st.write(
-            "Nodes:",
-            G.number_of_nodes()
-        )
+                for cycle in cycles[:20]:
 
-        st.write(
-            "Edges:",
-            G.number_of_edges()
-        )
+                    st.write(
+                        " → ".join(
+                            map(
+                                str,
+                                cycle,
+                            )
+                        )
+                    )
+
+            else:
+
+                st.success(
+                    "✅ No circular dependencies detected."
+                )
 
 
-# ─────────────────────────────────────────────────────────────
-# AI CODE EXPLANATION
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# PAGE 7 — ARCHITECTURE METRICS
+# ============================================================
 
-if page == "💡 Explain Code":
+if page == "📊 Architecture Metrics":
 
     require_uploaded_files()
 
     st.header(
-        "💡 AI Code Explanation"
+        "📊 Architecture Metrics"
     )
 
-    if st.button(
-        "Explain Code",
-        key="explain"
-    ):
-
-        explanation = explain_code(
-            all_sources[0]
-        )
-
-        st.write(
-            explanation
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# MULTI-FILE ANALYSIS
-# ─────────────────────────────────────────────────────────────
-
-if page == "🌐 Multi-file Analysis":
-
-    require_uploaded_files()
-
-    st.header(
-        "🌐 Multi-file Cross Module Analysis"
+    st.write(
+        """
+        Quantitative measurements of the recovered architecture.
+        These values are computed from the dependency graph rather
+        than generated by an LLM.
+        """
     )
 
-    if st.button(
-        "🚀 Run Full Project Analysis",
-        key="multifile"
-    ):
+    G = build_combined_dependency_graph(
+        file_paths
+    )
 
-        G = nx.DiGraph()
+    if G.number_of_nodes() == 0:
 
-        for path in file_paths:
-
-            subgraph = build_dependency_graph(
-                path
-            )
-
-            G = nx.compose(
-                G,
-                subgraph
-            )
-
-        os.makedirs(
-            "outputs",
-            exist_ok=True
+        st.warning(
+            "No architecture relationships detected."
         )
 
-        output_path = os.path.join(
-            "outputs",
-            "multifile.png"
-        )
+    else:
 
-        draw_dependency_graph(
-            G,
-            output_path
-        )
+        components = G.number_of_nodes()
 
-        st.image(
-            output_path
+        dependencies = G.number_of_edges()
+
+        density = nx.density(
+            G
         )
 
         cycles = list(
             nx.simple_cycles(G)
         )
 
-        if cycles:
-
-            st.error(
-                "⚠️ Circular Dependencies Found!"
-            )
-
-            for cycle in cycles:
-
-                st.write(
-                    " ➜ ".join(cycle)
-                )
-
-        else:
-
-            st.success(
-                "✅ No circular dependencies found."
-            )
-
-        st.success(
-            f"Files: {len(file_paths)} | "
-            f"Nodes: {G.number_of_nodes()} | "
-            f"Edges: {G.number_of_edges()}"
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# AI CODE REVIEW BOT
-# ─────────────────────────────────────────────────────────────
-
-if page == "👨‍💻 Code Review Bot":
-
-    require_uploaded_files()
-
-    st.header(
-        "👨‍💻 AI Code Review Bot"
-    )
-
-    option = st.selectbox(
-        "Choose code to review",
-        [
-            "Full Code",
-            "Paste Custom Code"
-        ]
-    )
-
-    if option == "Full Code":
-
-        code_to_review = all_sources[0]
-
-    else:
-
-        code_to_review = st.text_area(
-            "Paste code here",
-            height=300
-        )
-
-    if st.button(
-        "🔍 Review Code",
-        key="code_review"
-    ):
-
-        if not code_to_review.strip():
-
-            st.warning(
-                "Please provide code to review."
-            )
-
-        else:
-
-            review = review_code(
-                code_to_review
-            )
-
-            st.write(
-                review
-            )
-
-
-# ─────────────────────────────────────────────────────────────
-# TECHNICAL DEBT
-# ─────────────────────────────────────────────────────────────
-
-if page == "💰 Technical Debt":
-
-    require_uploaded_files()
-
-    st.header(
-        "💰 Technical Debt Calculator"
-    )
-
-    st.write(
-        "Estimate technical debt based on "
-        "code structure and complexity."
-    )
-
-    if st.button(
-        "Calculate Technical Debt",
-        key="technical_debt"
-    ):
-
-        result = calculate_technical_debt(
-            parsed_files
-        )
-
-        c1, c2 = st.columns(2)
+        c1, c2, c3, c4 = st.columns(4)
 
         c1.metric(
-            "Estimated Hours",
-            f"{result['estimated_hours']} hrs"
+            "Components",
+            components,
         )
 
         c2.metric(
-            "Estimated Cost",
-            f"₹{result['estimated_cost']}"
+            "Dependencies",
+            dependencies,
+        )
+
+        c3.metric(
+            "Graph Density",
+            f"{density:.3f}",
+        )
+
+        c4.metric(
+            "Cycles",
+            len(cycles),
         )
 
         st.divider()
 
         st.subheader(
-            "Breakdown"
+            "Component Connectivity"
         )
 
-        st.write(
-            f"Functions: {result['functions']}"
+        degree_data = []
+
+        for node in G.nodes():
+
+            degree_data.append({
+
+                "Component":
+                    str(node),
+
+                "Dependencies":
+                    G.degree(node),
+
+                "Incoming":
+                    G.in_degree(node),
+
+                "Outgoing":
+                    G.out_degree(node),
+            })
+
+        degree_data.sort(
+            key=lambda x:
+                x["Dependencies"],
+            reverse=True,
         )
 
-        st.write(
-            f"Classes: {result['classes']}"
-        )
-
-        st.write(
-            f"Complexity Penalty: "
-            f"{result['complexity_penalty']} hrs"
-        )
-
-        st.write(
-            f"Long Function Penalty: "
-            f"{result['long_function_penalty']} hrs"
-        )
-
-
-# ─────────────────────────────────────────────────────────────
-# GIT ANALYSIS
-# ─────────────────────────────────────────────────────────────
-
-if page == "🐙 Git Analysis":
-
-    st.markdown(
-        "## 🐙 Git Analysis"
-    )
-
-    if "github_repo_path" not in st.session_state:
-
-        st.info(
-            "No repository analyzed yet. "
-            "Paste a GitHub link in the box at "
-            "the **top of the Analyzer page**."
-        )
-
-    else:
-
-        info = st.session_state[
-            "github_repo_info"
-        ]
-
-        overview = st.session_state[
-            "github_repo_overview"
-        ]
-
-        recent_commits = st.session_state[
-            "github_repo_commits"
-        ]
-
-        python_files = st.session_state[
-            "github_repo_python_files"
-        ]
-
-        repo_path = st.session_state[
-            "github_repo_path"
-        ]
-
-        st.markdown(
-            "### 📊 Repository Overview"
-        )
-
-        o1, o2, o3, o4 = st.columns(4)
-
-        o1.metric(
-            "Repository",
-            overview["name"]
-        )
-
-        o2.metric(
-            "Owner",
-            overview["owner"]
-        )
-
-        o3.metric(
-            "Branch",
-            overview["branch"]
-        )
-
-        o4.metric(
-            "Total Commits",
-            overview["commit_count"]
-        )
-
-        st.write(
-            f"**GitHub URL:** {overview['url']}"
-        )
-
-        c1, c2, c3 = st.columns(3)
-
-        c1.metric(
-            "Python Files",
-            info["python_files"]
-        )
-
-        c2.metric(
-            "Total Lines",
-            info["total_lines"]
-        )
-
-        c3.metric(
-            "Files In Last Commit",
-            (
-                recent_commits[0]["files_changed"]
-                if recent_commits
-                else 0
-            )
-        )
-
-        st.markdown(
-            "### 🕐 Recent Commit History"
-        )
-
-        if not recent_commits:
-
-            st.info(
-                "No commit history was found in this repository."
-            )
-
-        else:
-
-            for commit in recent_commits:
-
-                with st.expander(
-                    f"{commit['hash']} — "
-                    f"{commit['message']}"
-                ):
-
-                    cc1, cc2, cc3 = st.columns(3)
-
-                    cc1.write(
-                        f"**Author:** "
-                        f"{commit['author']}"
-                    )
-
-                    cc2.write(
-                        f"**Date:** "
-                        f"{commit['date']}"
-                    )
-
-                    cc3.write(
-                        f"**Files Committed:** "
-                        f"{commit['files_changed']}"
-                    )
-
-                    if commit[
-                        "changed_files"
-                    ]:
-
-                        st.write(
-                            "**Committed File Names:**"
-                        )
-
-                        for changed_file in commit[
-                            "changed_files"
-                        ]:
-
-                            st.write(
-                                f"📄 {changed_file}"
-                            )
-
-                    else:
-
-                        st.write(
-                            "No changed-file information available."
-                        )
-
-        st.markdown(
-            f"### 📁 Python Files Found "
-            f"({len(python_files)})"
-        )
-
-        if not python_files:
-
-            st.info(
-                "No Python files were found in this repository."
-            )
-
-        else:
-
-            for file_path in python_files:
-
-                relative_path = os.path.relpath(
-                    file_path,
-                    repo_path
-                )
-
-                st.write(
-                    f"📄 {relative_path}"
-                )
-
-
-# ─────────────────────────────────────────────────────────────
-# LOGICAL COUPLING
-# ─────────────────────────────────────────────────────────────
-
-if page == "🔀 Logical Coupling":
-
-    st.markdown(
-        "## 🔀 Git History — Logical Coupling"
-    )
-
-    st.write(
-        "Find files that frequently change together "
-        "even when they have no direct dependency."
-    )
-
-    coupling_target = st.session_state.get(
-        "github_repo_path",
-        BASE_DIR
-    )
-
-    if "github_repo_path" in st.session_state:
-
-        st.caption(
-            f"Analyzing cloned repo: "
-            f"`{coupling_target}`"
-        )
-
-    else:
-
-        st.caption(
-            "No GitHub repo analyzed yet — analyzing "
-            "this tool's own repo as a fallback."
-        )
-
-    if st.button(
-        "Analyze Git History 🔍"
-    ):
-
-        try:
-
-            result = mine_logical_coupling(
-                coupling_target
-            )
-
-            st.metric(
-                "Commits Analyzed",
-                result["commits_analyzed"]
-            )
-
-            st.metric(
-                "Files Analyzed",
-                result["files_analyzed"]
-            )
-
-            couplings = result[
-                "couplings"
-            ]
-
-            if not couplings:
-
-                st.info(
-                    "No significant logical coupling found."
-                )
-
-            else:
-
-                st.write(
-                    "### 🔗 Strongest Hidden Relationships"
-                )
-
-                for coupling in couplings[:20]:
-
-                    score = coupling[
-                        "coupling_score"
-                    ]
-
-                    st.markdown(
-                        f"""
-                        **{coupling['file_a']}**
-                        ↔
-                        **{coupling['file_b']}**
-
-                        - Coupling Score: **{score}%**
-                        - Changed Together: **{coupling['co_change_count']} times**
-                        - {coupling['file_a']} commits: **{coupling['file_a_commits']}**
-                        - {coupling['file_b']} commits: **{coupling['file_b_commits']}**
-                        """
-                    )
-
-                    st.divider()
-
-        except Exception as e:
-
-            st.error(
-                f"Git history analysis failed: {e}"
-            )
-
-
-# ─────────────────────────────────────────────────────────────
-# CLONE DETECTION
-# ─────────────────────────────────────────────────────────────
-
-if page == "🧬 Clone Detection":
-
-    st.markdown(
-        "## 🧬 Code Clone Detection"
-    )
-
-    st.caption(
-        "Finds duplicate code using semantic embeddings "
-        "or structural AST fingerprinting."
-    )
-
-    require_uploaded_files()
-
-    detection_mode = st.radio(
-        "Detection mode",
-        [
-            "Semantic (meaning-based)",
-            "Structural (exact/renamed copies)"
-        ],
-        horizontal=True,
-        key="clone_detection_mode"
-    )
-
-    if detection_mode == "Semantic (meaning-based)":
-
-        st.caption(
-            "Finds functions that have similar meaning "
-            "even when their implementation is written differently."
-        )
-
-        threshold = st.slider(
-            "Similarity threshold",
-            0.70,
-            0.99,
-            0.85,
-            0.01,
-            key="semantic_clone_threshold"
-        )
-
-        if st.button(
-            "🔍 Detect Semantic Clones",
+        st.dataframe(
+            degree_data,
             use_container_width=True,
-            type="primary",
-            key="detect_semantic_clones"
-        ):
-
-            with st.spinner(
-                "🧠 Comparing every function pair across all files..."
-            ):
-
-                try:
-
-                    summary = summarize_clones(
-                        parsed_files,
-                        threshold=threshold
-                    )
-
-                except Exception as e:
-
-                    st.error(
-                        f"❌ Semantic clone detection failed: {e}"
-                    )
-
-                    st.exception(e)
-
-                    st.stop()
-
-            st.markdown(
-                "### 📊 Detection Summary"
-            )
-
-            c1, c2 = st.columns(2)
-
-            c1.metric(
-                "Functions / Classes Scanned",
-                summary.get(
-                    "total_functions_classes",
-                    0
-                )
-            )
-
-            c2.metric(
-                "Duplication %",
-                f"{summary.get('duplication_percentage', 0)}%"
-            )
-
-            st.divider()
-
-            st.markdown(
-                "### 🔗 Clone Pairs"
-            )
-
-            clone_pairs = summary.get(
-                "clone_pairs",
-                []
-            )
-
-            if not clone_pairs:
-
-                st.success(
-                    "✅ No near-duplicate functions found "
-                    "above this threshold."
-                )
-
-            else:
-
-                for i, p in enumerate(
-                    clone_pairs,
-                    1
-                ):
-
-                    st.warning(
-                        f"**{p.get('a_name', 'Unknown')}** "
-                        f"({p.get('a_file', 'Unknown')}:{p.get('a_line', '?')}) "
-                        f"↔ "
-                        f"**{p.get('b_name', 'Unknown')}** "
-                        f"({p.get('b_file', 'Unknown')}:{p.get('b_line', '?')}) "
-                        f"— similarity **{p.get('similarity', 0)}**"
-                    )
-
-            clone_families = summary.get(
-                "clone_families",
-                {}
-            )
-
-            clusters = (
-                clone_families.get(
-                    "clusters",
-                    []
-                )
-                if isinstance(
-                    clone_families,
-                    dict
-                )
-                else []
-            )
-
-            if clusters:
-
-                st.markdown(
-                    "### 👨‍👩‍👧 Clone Families "
-                    "(3+ similar functions)"
-                )
-
-                for i, family in enumerate(
-                    clusters,
-                    1
-                ):
-
-                    names = ", ".join(
-                        f"{m.get('name', 'Unknown')} "
-                        f"({m.get('file', 'Unknown')})"
-                        for m in family
-                    )
-
-                    st.info(
-                        f"**Family {i}:** {names}"
-                    )
-
-    else:
-
-        st.caption(
-            "Finds functions that are structurally identical "
-            "using normalized AST fingerprinting."
+            hide_index=True,
         )
 
-        if st.button(
-            "🔍 Detect Structural Clones",
-            use_container_width=True,
-            type="primary",
-            key="detect_structural_clones"
-        ):
 
-            with st.spinner(
-                "🌳 Fingerprinting every function's AST structure..."
-            ):
-
-                try:
-
-                    source_lookup = {
-
-                        parsed.get(
-                            "file",
-                            ""
-                        ): source
-
-                        for parsed, source in zip(
-                            parsed_files,
-                            all_sources
-                        )
-                    }
-
-                    result = find_structural_clones(
-                        parsed_files,
-                        source_lookup
-                    )
-
-                except Exception as e:
-
-                    st.error(
-                        f"❌ Structural clone detection failed: {e}"
-                    )
-
-                    st.exception(e)
-
-                    st.stop()
-
-            total_groups = result.get(
-                "total_clone_groups",
-                0
-            )
-
-            st.metric(
-                "🧬 Structural Clone Groups Found",
-                total_groups
-            )
-
-            if total_groups == 0:
-
-                st.success(
-                    "✅ No exact structural duplicates found."
-                )
-
-            else:
-
-                st.markdown(
-                    "### 🔗 Structural Clone Groups"
-                )
-
-                for i, group in enumerate(
-                    result.get(
-                        "clone_groups",
-                        []
-                    ),
-                    1
-                ):
-
-                    names = ", ".join(
-                        f"{m.get('name', 'Unknown')} "
-                        f"({m.get('file', 'Unknown')}:"
-                        f"{m.get('line', '?')})"
-                        for m in group
-                    )
-
-                    st.warning(
-                        f"**Clone group {i}:** {names}"
-                    )
-
-
-# ─────────────────────────────────────────────────────────────
-# MODULE BOUNDARY DETECTION
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# PAGE 8 — MODULE BOUNDARIES
+# ============================================================
 
 if page == "🧩 Module Boundaries":
 
     require_uploaded_files()
 
-    st.markdown(
-        "## 🧩 Automatic Module Boundary Detection"
+    st.header(
+        "🧩 Architecture Module Boundaries"
     )
 
     st.caption(
-        "Uses Louvain community detection on the dependency graph "
-        "to suggest logical modules."
+        "Identify groups of strongly related components "
+        "using graph community structure."
     )
 
-    if st.button(
-        "Detect Module Boundaries"
-    ):
+    if not COMMUNITY_AVAILABLE:
 
-        G = nx.DiGraph()
-
-        for path in file_paths:
-
-            sub = build_dependency_graph(
-                path
-            )
-
-            G = nx.compose(
-                G,
-                sub
-            )
-
-        result = analyze_modularity(
-            G
+        st.error(
+            "community_detector.py is not available."
         )
 
-        if "error" in result:
+    else:
 
-            st.error(
-                result["error"]
+        G = build_combined_dependency_graph(
+            file_paths
+        )
+
+        if G.number_of_nodes() == 0:
+
+            st.warning(
+                "No dependency graph available."
+            )
+
+        elif st.button(
+            "Detect Architecture Modules",
+            type="primary",
+        ):
+
+            try:
+
+                result = analyze_modularity(
+                    G
+                )
+
+                if "error" in result:
+
+                    st.error(
+                        result["error"]
+                    )
+
+                else:
+
+                    c1, c2 = st.columns(2)
+
+                    c1.metric(
+                        "Modularity",
+                        result.get(
+                            "modularity_score",
+                            "N/A",
+                        ),
+                    )
+
+                    c2.metric(
+                        "Suggested Modules",
+                        result.get(
+                            "num_communities",
+                            "N/A",
+                        ),
+                    )
+
+                    if result.get(
+                        "interpretation"
+                    ):
+
+                        st.info(
+                            result[
+                                "interpretation"
+                            ]
+                        )
+
+                    st.subheader(
+                        "Suggested Architecture Modules"
+                    )
+
+                    for (
+                        community_id,
+                        module,
+                    ) in result.get(
+                        "suggested_modules",
+                        {},
+                    ).items():
+
+                        name = module.get(
+                            "suggested_name",
+                            f"Module {community_id}",
+                        )
+
+                        members = module.get(
+                            "members",
+                            [],
+                        )
+
+                        st.markdown(
+                            f"### {name}"
+                        )
+
+                        st.write(
+                            ", ".join(
+                                map(
+                                    str,
+                                    members,
+                                )
+                            )
+                        )
+
+            except Exception as e:
+
+                st.error(
+                    f"Module detection failed: {e}"
+                )
+
+
+# ============================================================
+# PAGE 9 — LOGICAL COUPLING
+# ============================================================
+
+if page == "🔀 Logical Coupling":
+
+    st.header(
+        "🔀 Architectural Logical Coupling"
+    )
+
+    st.write(
+        """
+        Detect files that repeatedly change together in Git history.
+        This can reveal hidden architectural relationships that are
+        not visible from direct dependencies alone.
+        """
+    )
+
+    if not COUPLING_AVAILABLE:
+
+        st.error(
+            "coupling_miner.py is not available."
+        )
+
+    else:
+
+        target = get_current_repository_path()
+
+        if not target:
+
+            st.warning(
+                "Load a repository from the "
+                "**📂 Repository Input** page first."
+            )
+
+        elif not git_repository_available():
+
+            st.warning(
+                "Logical coupling requires Git history. "
+                "Load a Git repository containing `.git` history."
             )
 
         else:
+
+            st.caption(
+                f"Repository: `{target}`"
+            )
+
+            if st.button(
+                "Analyze Logical Coupling",
+                type="primary",
+            ):
+
+                try:
+
+                    result = mine_logical_coupling(
+                        target
+                    )
+
+                    c1, c2 = st.columns(2)
+
+                    c1.metric(
+                        "Commits Analyzed",
+                        result.get(
+                            "commits_analyzed",
+                            0,
+                        ),
+                    )
+
+                    c2.metric(
+                        "Files Analyzed",
+                        result.get(
+                            "files_analyzed",
+                            0,
+                        ),
+                    )
+
+                    couplings = result.get(
+                        "couplings",
+                        [],
+                    )
+
+                    if not couplings:
+
+                        st.info(
+                            "No significant logical coupling detected."
+                        )
+
+                    else:
+
+                        for item in couplings[:20]:
+
+                            st.markdown(
+                                f"""
+                                **{item.get('file_a', 'Unknown')}**
+                                ↔
+                                **{item.get('file_b', 'Unknown')}**
+
+                                - Coupling score: **{item.get('coupling_score', 0)}%**
+                                - Changed together: **{item.get('co_change_count', 0)} times**
+                                """
+                            )
+
+                            st.divider()
+
+                except Exception as e:
+
+                    st.error(
+                        f"Logical coupling analysis failed: {e}"
+                    )
+
+
+# ============================================================
+# PAGE 10 — ARCHITECTURE RISK
+# ============================================================
+
+if page == "🔥 Architecture Risk":
+
+    require_uploaded_files()
+
+    st.header(
+        "🔥 Architecture Risk Analysis"
+    )
+
+    st.write(
+        """
+        Identify components that may become architectural hotspots
+        using structural complexity and repository change evidence.
+        """
+    )
+
+    target = get_current_repository_path()
+
+    if not RISK_AVAILABLE:
+
+        st.error(
+            "risk_predictor.py is not available."
+        )
+
+    elif not target:
+
+        st.warning(
+            "Load a repository first."
+        )
+
+    elif not git_repository_available():
+
+        st.warning(
+            "Architecture Risk requires Git history."
+        )
+
+    elif st.button(
+        "Compute Architecture Risk",
+        type="primary",
+    ):
+
+        try:
+
+            results = compute_risk_scores(
+                parsed_files,
+                repo_path=target,
+                max_commits=300,
+            )
+
+            if not results:
+
+                st.info(
+                    "No risk results were generated."
+                )
+
+            for item in results[:25]:
+
+                label = item.get(
+                    "risk_label",
+                    "UNKNOWN",
+                )
+
+                message = (
+                    f"**{item.get('file', 'Unknown')}** — "
+                    f"risk {item.get('risk_score', 0)}/100 "
+                    f"[{label}]"
+                )
+
+                if label == "HIGH":
+
+                    st.error(
+                        message
+                    )
+
+                elif label == "MEDIUM":
+
+                    st.warning(
+                        message
+                    )
+
+                else:
+
+                    st.success(
+                        message
+                    )
+
+                st.caption(
+                    f"Complexity: {item.get('complexity', 0)} | "
+                    f"Churn: {item.get('churn', 0)} | "
+                    f"Bug-fix commits: {item.get('bugfix_count', 0)}"
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"Risk analysis failed: {e}"
+            )
+
+            st.exception(e)
+
+
+# ============================================================
+# PAGE 11 — ARCHITECTURE DEBT
+# ============================================================
+
+if page == "💰 Architecture Debt":
+
+    require_uploaded_files()
+
+    st.header(
+        "💰 Architecture Debt"
+    )
+
+    st.write(
+        """
+        Architecture debt measures structural problems that make
+        the architecture harder to maintain or evolve.
+        """
+    )
+
+    if not TECH_DEBT_AVAILABLE:
+
+        st.error(
+            "techdebt.py is not available."
+        )
+
+    elif st.button(
+        "Calculate Architecture Debt",
+        type="primary",
+    ):
+
+        try:
+
+            result = calculate_technical_debt(
+                parsed_files
+            )
 
             c1, c2 = st.columns(2)
 
             c1.metric(
-                "Modularity Score",
-                result["modularity_score"]
+                "Estimated Remediation Hours",
+                f"{result.get('estimated_hours', 0)} hrs",
             )
 
             c2.metric(
-                "Suggested Modules",
-                result["num_communities"]
-            )
-
-            st.info(
-                result["interpretation"]
+                "Estimated Cost",
+                f"₹{result.get('estimated_cost', 0)}",
             )
 
             st.divider()
 
-            st.write(
-                "### Suggested Modules"
+            st.subheader(
+                "Current Structural Indicators"
             )
 
-            for comm_id, info in result[
-                "suggested_modules"
-            ].items():
+            st.write(
+                f"Functions: "
+                f"{result.get('functions', 0)}"
+            )
 
-                st.write(
-                    f"**{info['suggested_name']}** "
-                    f"({info['size']} members): "
-                    f"{', '.join(info['members'])}"
-                )
+            st.write(
+                f"Classes: "
+                f"{result.get('classes', 0)}"
+            )
 
+            st.write(
+                f"Complexity penalty: "
+                f"{result.get('complexity_penalty', 0)} hrs"
+            )
 
-# ─────────────────────────────────────────────────────────────
-# RISK HOTSPOTS
-# ─────────────────────────────────────────────────────────────
+            st.write(
+                f"Long-function penalty: "
+                f"{result.get('long_function_penalty', 0)} hrs"
+            )
 
-if page == "🔥 Risk Hotspots":
+            st.info(
+                """
+                Note: this existing estimator is currently a
+                baseline. Later it should be replaced with a
+                dedicated **Architecture Debt Index** based on
+                coupling, cycles, boundary violations and
+                architecture-rule violations.
+                """
+            )
 
-    st.markdown(
-        "## 🔥 Defect Risk Hotspot Prediction"
-    )
+        except Exception as e:
 
-    st.caption(
-        "Combines complexity + git churn + bugfix-commit history "
-        "to flag the files most likely to contain bugs."
-    )
-
-    risk_target = st.session_state.get(
-        "github_repo_path",
-        None
-    )
-
-    if not risk_target:
-
-        st.warning(
-            "This feature needs full git history. "
-            "Paste a GitHub link in the Analyzer page first."
-        )
-
-    else:
-
-        require_uploaded_files()
-
-        st.caption(
-            f"Analyzing cloned repo: `{risk_target}`"
-        )
-
-        if st.button(
-            "Compute Risk Scores"
-        ):
-
-            with st.spinner(
-                "Analyzing complexity and git history..."
-            ):
-
-                results = compute_risk_scores(
-                    parsed_files,
-                    repo_path=risk_target,
-                    max_commits=300
-                )
-
-            for r in results[:25]:
-
-                if r["risk_label"] == "HIGH":
-
-                    color = "error"
-
-                elif r["risk_label"] == "MEDIUM":
-
-                    color = "warning"
-
-                else:
-
-                    color = "success"
-
-                getattr(
-                    st,
-                    color
-                )(
-                    f"**{r['file']}** — "
-                    f"risk score {r['risk_score']}/100 "
-                    f"[{r['risk_label']}] "
-                    f"(complexity: {r['complexity']}, "
-                    f"churn: {r['churn']}, "
-                    f"bugfix commits: {r['bugfix_count']})"
-                )
+            st.error(
+                f"Architecture debt calculation failed: {e}"
+            )
 
 
-# ─────────────────────────────────────────────────────────────
-# EXECUTION REPLAY
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# PAGE 12 — ARCHITECTURE HEALTH
+# ============================================================
 
-if page == "▶️ Execution Replay":
+if page == "🩺 Architecture Health":
 
     require_uploaded_files()
 
-    st.markdown(
-        "## ▶️ Execution Path Replay (Static)"
+    st.header(
+        "🩺 Architecture Health"
     )
 
     st.caption(
-        "Walks the call graph from a chosen entry point. "
-        "No code is actually executed."
+        "A transparent baseline health index computed from the recovered "
+        "architecture graph and module structure. No LLM-generated scores."
     )
 
-    G = nx.DiGraph()
-
-    for path in file_paths:
-
-        sub = build_dependency_graph(
-            path
-        )
-
-        G = nx.compose(
-            G,
-            sub
-        )
+    G = build_combined_dependency_graph(
+        file_paths
+    )
 
     if G.number_of_nodes() == 0:
 
+        st.warning(
+            "No architecture graph is available yet."
+        )
+
         st.info(
-            "No functions found to trace."
+            "Load a repository with Python source files first."
         )
 
     else:
 
-        entry_point = st.selectbox(
-            "Choose entry function",
-            sorted(G.nodes)
+        node_count = G.number_of_nodes()
+
+        edge_count = G.number_of_edges()
+
+        density = nx.density(G)
+
+        cycles = list(
+            nx.simple_cycles(G)
         )
 
-        if entry_point:
+        coupling_health = max(
+            0.0,
+            min(
+                100.0,
+                100.0
+                * (
+                    1.0
+                    - min(
+                        1.0,
+                        density * 2.0,
+                    )
+                ),
+            ),
+        )
 
-            result = trace_static_execution_path(
-                G,
-                entry_point
+        cycle_ratio = min(
+            1.0,
+            len(cycles)
+            / max(
+                1,
+                node_count,
+            ),
+        )
+
+        cycle_health = (
+            100.0
+            * (
+                1.0
+                - cycle_ratio
             )
+        )
 
-            if "error" in result:
+        modularity_score = None
 
-                st.error(
-                    result["error"]
+        module_count = None
+
+        if COMMUNITY_AVAILABLE:
+
+            try:
+
+                modularity_result = analyze_modularity(
+                    G
                 )
 
-            elif result["total_steps"] == 0:
+                raw_modularity = modularity_result.get(
+                    "modularity_score"
+                )
 
-                st.info(
-                    f"'{entry_point}' doesn't call "
-                    "any other tracked functions."
+                if isinstance(
+                    raw_modularity,
+                    (int, float),
+                ):
+
+                    modularity_score = max(
+                        0.0,
+                        min(
+                            100.0,
+                            (
+                                (
+                                    float(
+                                        raw_modularity
+                                    )
+                                    + 1.0
+                                )
+                                / 2.0
+                            )
+                            * 100.0,
+                        ),
+                    )
+
+                module_count = modularity_result.get(
+                    "num_communities"
+                )
+
+            except Exception:
+
+                modularity_score = None
+
+        health_parts = [
+            coupling_health,
+            cycle_health,
+        ]
+
+        if modularity_score is not None:
+
+            health_parts.append(
+                modularity_score
+            )
+
+        health = (
+            sum(health_parts)
+            / len(health_parts)
+        )
+
+        if health >= 80:
+
+            health_label = "HEALTHY"
+
+        elif health >= 60:
+
+            health_label = "NEEDS ATTENTION"
+
+        else:
+
+            health_label = "AT RISK"
+
+        st.markdown(
+            "### Overall Architecture Health"
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Health Score",
+            f"{health:.1f}/100",
+        )
+
+        c2.metric(
+            "Status",
+            health_label,
+        )
+
+        c3.metric(
+            "Architecture Nodes",
+            node_count,
+        )
+
+        st.progress(
+            max(
+                0.0,
+                min(
+                    1.0,
+                    health / 100.0,
+                ),
+            )
+        )
+
+        st.divider()
+
+        st.markdown(
+            "### Evidence Behind the Score"
+        )
+
+        metric_rows = [
+
+            {
+                "Indicator":
+                    "Dependency Coupling Health",
+
+                "Score":
+                    round(
+                        coupling_health,
+                        1,
+                    ),
+
+                "Evidence":
+                    f"Graph density = {density:.4f}",
+            },
+
+            {
+                "Indicator":
+                    "Cycle Health",
+
+                "Score":
+                    round(
+                        cycle_health,
+                        1,
+                    ),
+
+                "Evidence":
+                    f"{len(cycles)} cycle(s) across "
+                    f"{node_count} nodes",
+            },
+        ]
+
+        if modularity_score is not None:
+
+            metric_rows.append({
+
+                "Indicator":
+                    "Modularity Health",
+
+                "Score":
+                    round(
+                        modularity_score,
+                        1,
+                    ),
+
+                "Evidence":
+                    (
+                        f"Detected {module_count} module(s)"
+                        if module_count is not None
+                        else
+                        "Community analysis available"
+                    ),
+            })
+
+        st.dataframe(
+            metric_rows,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.divider()
+
+        st.markdown(
+            "### Architecture Facts"
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Components",
+            node_count,
+        )
+
+        c2.metric(
+            "Dependencies",
+            edge_count,
+        )
+
+        c3.metric(
+            "Cycles",
+            len(cycles),
+        )
+
+        if cycles:
+
+            with st.expander(
+                "View detected cycles"
+            ):
+
+                for cycle in cycles[:20]:
+
+                    st.write(
+                        " → ".join(
+                            map(
+                                str,
+                                cycle,
+                            )
+                        )
+                    )
+
+        st.info(
+            """
+            **Important:** this is the first transparent baseline of the
+            Architecture Health Index. It intentionally does not invent
+            weights for Risk, Debt, Logical Coupling, or Boundary
+            Violations yet.
+
+            The next implementation step will make this a research-grade
+            composite index using evidence from the existing analysis
+            modules.
+            """
+        )
+
+
+# ============================================================
+# PAGE 13 — SEMANTIC EMBEDDINGS
+# ============================================================
+
+if page == "🔢 Semantic Embeddings":
+
+    require_uploaded_files()
+
+    st.header(
+        "🔢 Semantic Architecture Evidence"
+    )
+
+    st.write(
+        """
+        Generate semantic representations of the parsed code.
+
+        These embeddings are intentionally retained because they
+        will later become part of the Architecture-aware RAG layer.
+        """
+    )
+
+    if not parsed_files:
+
+        st.warning(
+            "No parsed files available."
+        )
+
+    elif st.button(
+        "Generate Semantic Representation",
+        type="primary",
+    ):
+
+        try:
+
+            # Preserve the existing embedder implementation.
+            embedding = embed_parsed_result(
+                parsed_files[0]
+            )
+
+            st.success(
+                "Semantic representation generated."
+            )
+
+            if hasattr(
+                embedding,
+                "shape",
+            ):
+
+                st.write(
+                    f"Embedding shape: {embedding.shape}"
+                )
+
+                st.write(
+                    embedding[:10]
                 )
 
             else:
 
-                step = st.slider(
-                    "Step",
-                    0,
-                    result["total_steps"],
-                    0
-                )
+                try:
 
-                os.makedirs(
-                    "outputs",
-                    exist_ok=True
-                )
-
-                output_path = os.path.join(
-                    "outputs",
-                    "exec_step.png"
-                )
-
-                draw_execution_step(
-                    G,
-                    result["steps"],
-                    step,
-                    output_path
-                )
-
-                st.image(
-                    output_path
-                )
-
-                if step > 0:
-
-                    s = result[
-                        "steps"
-                    ][step - 1]
-
-                    st.info(
-                        f"Step {step}: "
-                        f"**{s['from']}** calls "
-                        f"**{s['to']}**"
+                    st.write(
+                        embedding[:10]
                     )
 
+                except Exception:
 
-# ─────────────────────────────────────────────────────────────
-# NATURAL LANGUAGE CODE SEARCH
-# ─────────────────────────────────────────────────────────────
+                    st.write(
+                        embedding
+                    )
 
-if page == "🔎 NL Code Search":
+        except Exception as e:
 
-    require_uploaded_files()
+            st.error(
+                f"Embedding generation failed: {e}"
+            )
+
+
+# ============================================================
+# PAGE 14 — REPOSITORY INPUT
+# ============================================================
+
+if page == "📂 Repository Input":
+
+    st.header(
+        "📂 Analyze Repository"
+    )
+
+    st.write(
+        """
+        Provide the software system that should be analyzed.
+
+        The repository is the **input/evidence source** for the
+        architecture intelligence engine. This page only loads the
+        repository; the actual architecture analysis happens in
+        the analysis pages.
+        """
+    )
 
     st.markdown(
-        "## 🔎 Natural Language Code Search"
+        "### Choose an input method"
     )
 
-    st.caption(
-        "Search your codebase in plain English using "
-        "local semantic embeddings."
+    input_method = st.radio(
+        "Repository source",
+        [
+            "GitHub URL",
+            "Upload ZIP",
+        ],
+        horizontal=True,
+        key="repository_input_method",
     )
 
-    if (
-        "search_engine" not in st.session_state
-        or st.session_state.get(
-            "search_files_count"
-        ) != len(parsed_files)
-    ):
+    # --------------------------------------------------------
+    # GITHUB
+    # --------------------------------------------------------
 
-        with st.spinner(
-            "Building semantic search index..."
+    if input_method == "GitHub URL":
+
+        github_url = st.text_input(
+            "Public GitHub Repository URL",
+            placeholder=(
+                "https://github.com/username/repository"
+            ),
+            key="github_repository_url",
+        )
+
+        if st.button(
+            "Load Repository",
+            type="primary",
+            key="load_github_repository",
         ):
 
-            engine = CodeSearchEngine()
+            if not github_url.strip():
 
-            count = engine.build_index(
-                parsed_files
-            )
-
-            st.session_state[
-                "search_engine"
-            ] = engine
-
-            st.session_state[
-                "search_files_count"
-            ] = len(parsed_files)
-
-        st.success(
-            f"Indexed {count} functions/classes."
-        )
-
-    engine = st.session_state[
-        "search_engine"
-    ]
-
-    query = st.text_input(
-        "Search query",
-        placeholder=(
-            "e.g. function that connects to database"
-        )
-    )
-
-    col1, col2 = st.columns(2)
-
-    filter_type = col1.selectbox(
-        "Filter by type",
-        [
-            None,
-            "function",
-            "class"
-        ],
-        format_func=lambda x: x or "Any"
-    )
-
-    filter_complexity = col2.selectbox(
-        "Filter by complexity",
-        [
-            None,
-            "low",
-            "medium",
-            "high"
-        ],
-        format_func=lambda x: x or "Any"
-    )
-
-    if query:
-
-        results = engine.search(
-            query,
-            top_k=10,
-            filter_type=filter_type,
-            filter_complexity=filter_complexity
-        )
-
-        if not results:
-
-            st.info(
-                "No matches found. "
-                "Try a different phrasing."
-            )
-
-        for r in results:
-
-            st.markdown(
-                f"**{r['name']}** "
-                f"({r['type']}) — "
-                f"`{r['file']}:{r['line']}` "
-                f"— similarity {r['similarity']}"
-            )
-
-            if r.get(
-                "docstring"
-            ):
-
-                st.caption(
-                    r["docstring"]
+                st.warning(
+                    "Please enter a GitHub repository URL."
                 )
 
-            st.divider()
+            else:
 
-    st.markdown(
-        "### 📊 Codebase Stats"
-    )
+                try:
 
-    stats = engine.get_stats()
+                    with st.spinner(
+                        "Cloning repository..."
+                    ):
 
-    sc1, sc2, sc3, sc4 = st.columns(4)
+                        repo_path = clone_github_repository(
+                            github_url.strip()
+                        )
 
-    sc1.metric(
-        "Indexed items",
-        stats["total_indexed"]
-    )
+                    python_files = get_python_files(
+                        repo_path
+                    )
 
-    sc2.metric(
-        "Undocumented",
-        stats["undocumented"]
-    )
+                    # Clear previous state.
+                    st.session_state[
+                        "uploaded_file_data"
+                    ] = []
 
-    sc3.metric(
-        "High complexity",
-        stats["high_complexity"]
-    )
+                    st.session_state[
+                        "architecture_snapshots"
+                    ] = []
 
-    sc4.metric(
-        "Async functions",
-        stats["async_fns"]
-    )
+                    st.session_state[
+                        "latest_architecture_snapshot"
+                    ] = None
 
-    if st.button(
-        "Show Complexity Hotspots"
-    ):
+                    # Store new repository.
+                    st.session_state[
+                        "github_repo_path"
+                    ] = repo_path
 
-        hotspots = engine.get_complexity_hotspots(
-            top_k=5
-        )
+                    st.session_state[
+                        "repository_local_path"
+                    ] = None
 
-        for h in hotspots:
+                    st.session_state[
+                        "repository_source"
+                    ] = "GitHub"
 
-            st.warning(
-                f"**{h['name']}** "
-                f"({h['file']}:{h['line']}) — "
-                f"complexity {h['complexity']}"
-            )
+                    st.session_state[
+                        "repository_name"
+                    ] = get_repository_name(
+                        repo_path
+                    )
 
+                    st.session_state[
+                        "repository_file_paths"
+                    ] = python_files
 
-# ─────────────────────────────────────────────────────────────
-# CHANGE IMPACT
-# ─────────────────────────────────────────────────────────────
+                    # IMPORTANT:
+                    # Store the URL under the same key used
+                    # everywhere else.
+                    st.session_state[
+                        "repository_url"
+                    ] = github_url.strip()
 
-if page == "⚡ Change Impact":
+                    st.success(
+                        "✅ Repository loaded successfully. "
+                        "It is now available to the architecture "
+                        "analysis engine."
+                    )
 
-    st.markdown(
-        "## ⚡ Change Impact / Ripple Predictor"
-    )
+                except Exception as e:
 
-    st.caption(
-        "Combines the dependency graph, logical coupling "
-        "history and risk scores."
-    )
+                    st.error(
+                        f"❌ Repository loading failed: {e}"
+                    )
 
-    impact_target = st.session_state.get(
-        "github_repo_path",
-        None
-    )
+                    st.exception(e)
 
-    if not impact_target:
-
-        st.warning(
-            "This feature needs full git history. "
-            "Paste a GitHub link in the Analyzer page first."
-        )
+    # --------------------------------------------------------
+    # ZIP
+    # --------------------------------------------------------
 
     else:
 
-        require_uploaded_files()
+        uploaded_zip = st.file_uploader(
+            "Upload repository as ZIP",
+            type=["zip"],
+            key="repository_zip_upload",
+        )
 
-        G = nx.DiGraph()
+        if st.button(
+            "Load ZIP Repository",
+            type="primary",
+            key="load_zip_repository",
+        ):
 
-        for path in file_paths:
+            if uploaded_zip is None:
 
-            sub = build_dependency_graph(
-                path
-            )
+                st.warning(
+                    "Please upload a ZIP file first."
+                )
 
-            G = nx.compose(
-                G,
-                sub
-            )
+            else:
 
-        if G.number_of_nodes() == 0:
+                try:
 
-            st.info(
-                "No files to analyze."
+                    with st.spinner(
+                        "Extracting repository..."
+                    ):
+
+                        repo_path = (
+                            extract_uploaded_repository(
+                                uploaded_zip
+                            )
+                        )
+
+                    python_files = get_python_files(
+                        repo_path
+                    )
+
+                    # Clear previous state.
+                    st.session_state[
+                        "uploaded_file_data"
+                    ] = []
+
+                    st.session_state[
+                        "architecture_snapshots"
+                    ] = []
+
+                    st.session_state[
+                        "latest_architecture_snapshot"
+                    ] = None
+
+                    # Store ZIP repository.
+                    st.session_state[
+                        "github_repo_path"
+                    ] = repo_path
+
+                    st.session_state[
+                        "repository_local_path"
+                    ] = repo_path
+
+                    st.session_state[
+                        "repository_source"
+                    ] = "ZIP"
+
+                    st.session_state[
+                        "repository_name"
+                    ] = get_repository_name(
+                        repo_path
+                    )
+
+                    st.session_state[
+                        "repository_file_paths"
+                    ] = python_files
+
+                    st.session_state[
+                        "repository_url"
+                    ] = None
+
+                    st.success(
+                        "✅ ZIP repository loaded successfully. "
+                        "It is now available to the architecture "
+                        "analysis engine."
+                    )
+
+                except Exception as e:
+
+                    st.error(
+                        f"❌ ZIP repository loading failed: {e}"
+                    )
+
+                    st.exception(e)
+
+    # --------------------------------------------------------
+    # CURRENT REPOSITORY STATUS
+    # --------------------------------------------------------
+
+    repo_files = st.session_state.get(
+        "repository_file_paths",
+        [],
+    )
+
+    if repo_files:
+
+        st.divider()
+
+        st.subheader(
+            "Repository Ready"
+        )
+
+        source = st.session_state.get(
+            "repository_source",
+            "Unknown",
+        )
+
+        name = st.session_state.get(
+            "repository_name",
+            "Repository",
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Repository",
+            name,
+        )
+
+        c2.metric(
+            "Source",
+            source,
+        )
+
+        c3.metric(
+            "Python Files",
+            len(repo_files),
+        )
+
+        if git_repository_available():
+
+            st.success(
+                "🟢 Git history detected. "
+                "Architecture Time Machine, Logical Coupling, "
+                "and Git-based Risk analysis are available."
             )
 
         else:
 
-            target_file = st.selectbox(
-                "File you're about to change",
-                sorted(G.nodes)
+            st.info(
+                "🔵 Structural repository analysis is available. "
+                "Git-history-based features require a repository "
+                "with valid Git history."
             )
 
-            if st.button(
-                "Predict Impact"
-            ):
+        with st.expander(
+            "View discovered Python files"
+        ):
 
-                with st.spinner(
-                    "Combining structural graph, "
-                    "coupling history, and risk scores..."
-                ):
+            for path in repo_files:
 
-                    result = predict_change_impact(
-                        target_file,
-                        G,
-                        impact_target,
-                        parsed_files
-                    )
-
-                st.metric(
-                    "Files Likely Affected",
-                    result[
-                        "total_impacted_files"
-                    ]
+                st.write(
+                    f"📄 {get_relative_file_name(path)}"
                 )
 
-                if (
-                    result[
-                        "total_impacted_files"
-                    ] == 0
-                ):
+        if source == "ZIP":
 
-                    st.success(
-                        "No related files detected — "
-                        "this file appears isolated."
-                    )
-
-                for item in result[
-                    "impacted_files"
-                ]:
-
-                    label = item[
-                        "risk_label"
-                    ]
-
-                    if label == "HIGH":
-
-                        color = "error"
-
-                    elif label == "MEDIUM":
-
-                        color = "warning"
-
-                    else:
-
-                        color = "success"
-
-                    reasons = "; ".join(
-                        item["reasons"]
-                    )
-
-                    score_text = (
-                        f"risk {item['risk_score']}/100"
-                        if item["risk_score"] is not None
-                        else "risk unknown"
-                    )
-
-                    getattr(
-                        st,
-                        color
-                    )(
-                        f"**{item['file']}** "
-                        f"({score_text}) — {reasons}"
-                    )
+            st.info(
+                "ZIP input supports structural architecture analysis. "
+                "If the ZIP does not contain `.git` history, "
+                "Git-history-based features such as Logical Coupling "
+                "and the Architecture Time Machine will remain unavailable."
+            )
 
 
-# ─────────────────────────────────────────────────────────────
-# ARCHITECTURE TIME MACHINE
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# PAGE 15 — ARCHITECTURE TIME MACHINE
+# ============================================================
 
 if page == "⏳ Architecture Time Machine":
 
@@ -3852,34 +3640,60 @@ if page == "⏳ Architecture Time Machine":
         "and inspect how the architecture evolved over time."
     )
 
-    repo_path = st.session_state.get(
-        "github_repo_path",
-        None
-    )
+    repo_path = get_current_repository_path()
 
     if not repo_path:
 
         st.warning(
-            "🐙 Please analyze a GitHub repository from the "
-            "**🏠 Analyzer** page first."
+            "🐙 Please load a GitHub repository from the "
+            "**📂 Repository Input** page first."
+        )
+
+    elif not git_repository_available():
+
+        st.warning(
+            "🐙 Architecture Time Machine requires a valid Git repository "
+            "with commit history. A normal ZIP containing only source "
+            "files cannot provide historical architecture snapshots."
+        )
+
+    elif not ARCHITECTURE_MODEL_AVAILABLE:
+
+        st.error(
+            "The `architecture_model` package is not available. "
+            "The Time Machine cannot create ArchitectureSnapshot objects."
         )
 
     else:
 
+        repository_url = st.session_state.get(
+            "repository_url"
+        )
+
         st.success(
             f"Repository loaded: "
-            f"`{st.session_state.get('github_repo_url', repo_path)}`"
+            f"`{repository_url or repo_path}`"
         )
 
-        repo = Repo(
-            repo_path
-        )
+        try:
 
-        commits = list(
-            repo.iter_commits(
-                "--all"
+            repo = Repo(
+                repo_path
             )
-        )
+
+            commits = list(
+                repo.iter_commits(
+                    "--all"
+                )
+            )
+
+        except Exception as e:
+
+            st.error(
+                f"Could not read Git history: {e}"
+            )
+
+            commits = []
 
         if not commits:
 
@@ -3906,8 +3720,7 @@ if page == "⏳ Architecture Time Machine":
                 )
 
                 label = (
-                    f"{short_hash} — "
-                    f"{message}"
+                    f"{short_hash} — {message}"
                 )
 
                 commit_options[
@@ -3919,7 +3732,7 @@ if page == "⏳ Architecture Time Machine":
                 list(
                     commit_options.keys()
                 ),
-                key="architecture_tm_commit"
+                key="architecture_tm_commit",
             )
 
             selected_commit_hash = (
@@ -3928,305 +3741,357 @@ if page == "⏳ Architecture Time Machine":
                 ]
             )
 
-            selected_commit = repo.commit(
-                selected_commit_hash
-            )
+            try:
 
-            st.markdown(
-                "### 📌 Selected Commit"
-            )
-
-            c1, c2, c3 = st.columns(3)
-
-            c1.metric(
-                "Commit",
-                selected_commit_hash[:7]
-            )
-
-            c2.metric(
-                "Author",
-                selected_commit.author.name
-                or "Unknown"
-            )
-
-            c3.metric(
-                "Date",
-                selected_commit.committed_datetime.strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-            )
-
-            st.write(
-                f"**Message:** "
-                f"{selected_commit.message.strip()}"
-            )
-
-            if st.button(
-                "🏗️ Recover Architecture at This Commit",
-                type="primary",
-                use_container_width=True,
-                key="recover_architecture_commit"
-            ):
-
-                with st.spinner(
-                    "Recovering architecture from the selected commit..."
-                ):
-
-                    try:
-
-                        snapshot = recover_architecture_from_commit(
-                            repo_path,
-                            selected_commit_hash
-                        )
-
-                        st.session_state[
-                            "latest_architecture_snapshot"
-                        ] = snapshot
-
-                        if (
-                            "architecture_snapshots"
-                            not in st.session_state
-                        ):
-
-                            st.session_state[
-                                "architecture_snapshots"
-                            ] = []
-
-                        existing_hashes = [
-
-                            getattr(
-                                s,
-                                "commit_hash",
-                                ""
-                            )
-
-                            for s in
-                            st.session_state[
-                                "architecture_snapshots"
-                            ]
-                        ]
-
-                        if (
-                            selected_commit_hash
-                            not in existing_hashes
-                        ):
-
-                            st.session_state[
-                                "architecture_snapshots"
-                            ].append(
-                                snapshot
-                            )
-
-                        st.success(
-                            "✅ Architecture recovered successfully."
-                        )
-
-                        display_architecture_snapshot(
-                            snapshot,
-                            "Recovered Architecture"
-                        )
-
-                        G_snapshot = (
-                            architecture_snapshot_to_graph(
-                                snapshot
-                            )
-                        )
-
-                        if (
-                            G_snapshot.number_of_nodes()
-                            > 0
-                        ):
-
-                            st.markdown(
-                                "### 🗺️ Recovered Architecture Graph"
-                            )
-
-                            create_animated_architecture(
-                                G_snapshot
-                            )
-
-                        else:
-
-                            st.info(
-                                "The selected commit does not contain "
-                                "enough recoverable architecture components "
-                                "to display a graph."
-                            )
-
-                    except Exception as e:
-
-                        st.error(
-                            f"❌ Architecture recovery failed: {e}"
-                        )
-
-                        st.exception(e)
-
-            st.divider()
-
-            st.markdown(
-                "### 📚 Recovered Architecture Snapshots"
-            )
-
-            snapshots = st.session_state.get(
-                "architecture_snapshots",
-                []
-            )
-
-            if not snapshots:
-
-                st.info(
-                    "No architecture snapshots have been created yet."
+                selected_commit = repo.commit(
+                    selected_commit_hash
                 )
 
-            else:
+            except Exception as e:
 
-                for i, snapshot in enumerate(
-                    reversed(snapshots),
-                    1
+                st.error(
+                    f"Could not load selected commit: {e}"
+                )
+
+                selected_commit = None
+
+            if selected_commit:
+
+                st.markdown(
+                    "### 📌 Selected Commit"
+                )
+
+                c1, c2, c3 = st.columns(3)
+
+                c1.metric(
+                    "Commit",
+                    selected_commit_hash[:7],
+                )
+
+                c2.metric(
+                    "Author",
+                    selected_commit.author.name
+                    or "Unknown",
+                )
+
+                c3.metric(
+                    "Date",
+                    selected_commit.committed_datetime.strftime(
+                        "%Y-%m-%d %H:%M"
+                    ),
+                )
+
+                st.write(
+                    f"**Message:** "
+                    f"{selected_commit.message.strip()}"
+                )
+
+                if st.button(
+                    "🏗️ Recover Architecture at This Commit",
+                    type="primary",
+                    use_container_width=True,
+                    key="recover_architecture_commit",
                 ):
 
-                    data = snapshot_to_dict(
-                        snapshot
-                    )
-
-                    metrics = data.get(
-                        "metrics",
-                        {}
-                    )
-
-                    commit_hash = data.get(
-                        "commit_hash",
-                        "unknown"
-                    )
-
-                    with st.expander(
-                        f"📸 Snapshot {i} — "
-                        f"{str(commit_hash)[:7]}"
+                    with st.spinner(
+                        "Recovering architecture from the selected commit..."
                     ):
 
-                        c1, c2, c3, c4 = st.columns(4)
+                        try:
 
-                        c1.metric(
-                            "Commit",
-                            str(
-                                commit_hash
-                            )[:7]
-                        )
-
-                        c2.metric(
-                            "Components",
-                            metrics.get(
-                                "total_components",
-                                0
+                            snapshot = (
+                                recover_architecture_from_commit(
+                                    repo_path,
+                                    selected_commit_hash,
+                                )
                             )
-                        )
 
-                        c3.metric(
-                            "Relationships",
-                            metrics.get(
-                                "total_relationships",
-                                0
+                            st.session_state[
+                                "latest_architecture_snapshot"
+                            ] = snapshot
+
+                            if (
+                                "architecture_snapshots"
+                                not in st.session_state
+                            ):
+
+                                st.session_state[
+                                    "architecture_snapshots"
+                                ] = []
+
+                            existing_hashes = [
+
+                                getattr(
+                                    s,
+                                    "commit_hash",
+                                    "",
+                                )
+
+                                for s in
+                                st.session_state[
+                                    "architecture_snapshots"
+                                ]
+                            ]
+
+                            if (
+                                selected_commit_hash
+                                not in existing_hashes
+                            ):
+
+                                st.session_state[
+                                    "architecture_snapshots"
+                                ].append(
+                                    snapshot
+                                )
+
+                            st.success(
+                                "✅ Architecture recovered successfully."
                             )
-                        )
 
-                        c4.metric(
-                            "Files",
-                            metrics.get(
-                                "total_files",
-                                0
+                            display_architecture_snapshot(
+                                snapshot,
+                                "Recovered Architecture",
                             )
-                        )
 
-                        st.json(
-                            data,
-                            expanded=False
-                        )
+                            G_snapshot = (
+                                architecture_snapshot_to_graph(
+                                    snapshot
+                                )
+                            )
 
-            # ------------------------------------------------
-            # COMPARE TWO ARCHITECTURE SNAPSHOTS
-            # ------------------------------------------------
+                            if (
+                                G_snapshot.number_of_nodes()
+                                > 0
+                            ):
 
-            if len(snapshots) >= 2:
+                                st.markdown(
+                                    "### 🗺️ Recovered Architecture Graph"
+                                )
+
+                                create_animated_architecture(
+                                    G_snapshot
+                                )
+
+                            else:
+
+                                st.info(
+                                    "The selected commit does not contain "
+                                    "enough recoverable architecture components "
+                                    "to display a graph."
+                                )
+
+                        except Exception as e:
+
+                            st.error(
+                                f"❌ Architecture recovery failed: {e}"
+                            )
+
+                            st.exception(e)
+
+                # ------------------------------------------------
+                # SNAPSHOTS
+                # ------------------------------------------------
 
                 st.divider()
 
                 st.markdown(
-                    "### 🔄 Architecture Evolution"
+                    "### 📚 Recovered Architecture Snapshots"
                 )
 
-                st.caption(
-                    "Compare the component and relationship counts "
-                    "of recovered architecture snapshots."
+                snapshots = st.session_state.get(
+                    "architecture_snapshots",
+                    [],
                 )
 
-                comparison_rows = []
+                if not snapshots:
 
-                for snapshot in snapshots:
-
-                    data = snapshot_to_dict(
-                        snapshot
+                    st.info(
+                        "No architecture snapshots have been created yet."
                     )
 
-                    metrics = data.get(
-                        "metrics",
-                        {}
-                    )
+                else:
 
-                    comparison_rows.append({
+                    for i, snapshot in enumerate(
+                        reversed(snapshots),
+                        1,
+                    ):
 
-                        "Commit":
-                            str(
-                                data.get(
-                                    "commit_hash",
-                                    "unknown"
-                                )
-                            )[:7],
+                        data = snapshot_to_dict(
+                            snapshot
+                        )
 
-                        "Components":
-                            metrics.get(
-                                "total_components",
-                                0
-                            ),
+                        metrics = data.get(
+                            "metrics",
+                            {},
+                        )
 
-                        "Relationships":
-                            metrics.get(
-                                "total_relationships",
-                                0
-                            ),
+                        if not isinstance(
+                            metrics,
+                            dict,
+                        ):
 
-                        "Files":
-                            metrics.get(
-                                "total_files",
-                                0
-                            ),
+                            metrics = {}
 
-                        "Violations":
-                            len(
-                                data.get(
-                                    "violations",
-                                    []
-                                )
+                        commit_hash = data.get(
+                            "commit_hash",
+                            "unknown",
+                        )
+
+                        with st.expander(
+                            f"📸 Snapshot {i} — "
+                            f"{str(commit_hash)[:7]}"
+                        ):
+
+                            c1, c2, c3, c4 = st.columns(4)
+
+                            c1.metric(
+                                "Commit",
+                                str(
+                                    commit_hash
+                                )[:7],
                             )
-                    })
 
-                st.dataframe(
-                    comparison_rows,
-                    use_container_width=True
-                )
+                            c2.metric(
+                                "Components",
+                                metrics.get(
+                                    "total_components",
+                                    len(
+                                        data.get(
+                                            "components",
+                                            [],
+                                        )
+                                    ),
+                                ),
+                            )
+
+                            c3.metric(
+                                "Relationships",
+                                metrics.get(
+                                    "total_relationships",
+                                    len(
+                                        data.get(
+                                            "relationships",
+                                            [],
+                                        )
+                                    ),
+                                ),
+                            )
+
+                            c4.metric(
+                                "Files",
+                                metrics.get(
+                                    "total_files",
+                                    0,
+                                ),
+                            )
+
+                            st.json(
+                                data,
+                                expanded=False,
+                            )
+
+                # ------------------------------------------------
+                # COMPARE SNAPSHOTS
+                # ------------------------------------------------
+
+                if len(snapshots) >= 2:
+
+                    st.divider()
+
+                    st.markdown(
+                        "### 🔄 Architecture Evolution"
+                    )
+
+                    st.caption(
+                        "Compare recovered architecture snapshots "
+                        "across Git commits."
+                    )
+
+                    comparison_rows = []
+
+                    for snapshot in snapshots:
+
+                        data = snapshot_to_dict(
+                            snapshot
+                        )
+
+                        metrics = data.get(
+                            "metrics",
+                            {},
+                        )
+
+                        if not isinstance(
+                            metrics,
+                            dict,
+                        ):
+
+                            metrics = {}
+
+                        comparison_rows.append({
+
+                            "Commit":
+                                str(
+                                    data.get(
+                                        "commit_hash",
+                                        "unknown",
+                                    )
+                                )[:7],
+
+                            "Components":
+                                metrics.get(
+                                    "total_components",
+                                    len(
+                                        data.get(
+                                            "components",
+                                            [],
+                                        )
+                                    ),
+                                ),
+
+                            "Relationships":
+                                metrics.get(
+                                    "total_relationships",
+                                    len(
+                                        data.get(
+                                            "relationships",
+                                            [],
+                                        )
+                                    ),
+                                ),
+
+                            "Files":
+                                metrics.get(
+                                    "total_files",
+                                    0,
+                                ),
+
+                            "Violations":
+                                len(
+                                    data.get(
+                                        "violations",
+                                        [],
+                                    )
+                                ),
+                        })
+
+                    st.dataframe(
+                        comparison_rows,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
 
-# ─────────────────────────────────────────────────────────────
-# CLEANUP TEMPORARY FILES
-# ─────────────────────────────────────────────────────────────
+# ============================================================
+# CLEANUP
+# ============================================================
 
-for path in file_paths:
+if (
+    file_paths
+    and not st.session_state.get(
+        "repository_file_paths"
+    )
+):
 
-    try:
-
-        os.unlink(
-            path
-        )
-
-    except Exception:
-
-        pass
+    cleanup_temp_files(
+        file_paths
+    )
