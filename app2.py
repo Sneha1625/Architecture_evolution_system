@@ -23,7 +23,7 @@ st.set_page_config(
     layout="wide",
 )
 
-
+from features.architecture_history import render_architecture_history
 # ============================================================
 # DATABASE
 # ============================================================
@@ -2192,6 +2192,8 @@ page = st.sidebar.radio(
         "Snapshot Comparison",
         "Architecture Health",
         "Database Test",
+        "Architecture History",
+
     ],
 )
 
@@ -2228,6 +2230,9 @@ try:
 
     elif page == "Database Test":
         show_database_test()
+
+    elif page == "Architecture History":
+        render_architecture_history()
 
 except sqlite3.Error as error:
 

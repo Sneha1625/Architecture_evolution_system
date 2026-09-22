@@ -12,6 +12,7 @@ Features:
     5. Display relationship changes
     6. Display architecture metrics
     7. Display architecture evolution summary
+    8. Display dynamic/runtime architecture
 
 This module contains UI logic only.
 The actual history and comparison logic remains in:
@@ -22,8 +23,15 @@ The actual history and comparison logic remains in:
         history_manager.py
         architecture_history_engine.py
         git_history.py
+
+Runtime execution is delegated to:
+
+    features/
+        runtime_architecture.py
+        runtime_pipeline.py
 """
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import streamlit as st
@@ -38,6 +46,14 @@ from architecture_model.snapshot_loader import (
 
 from architecture_model.architecture_comparison import (
     compare_snapshots,
+)
+
+from features.runtime_architecture import (
+    render_runtime_architecture,
+)
+
+from features.runtime_pipeline import (
+    run_repository_parser,
 )
 
 
@@ -994,6 +1010,25 @@ def render_history_view(
             selected_info
         )
 
+        # ----------------------------------------------------
+        # Runtime / Dynamic Architecture
+        # ----------------------------------------------------
+
+        st.markdown("---")
+
+        render_runtime_architecture(
+            static_relationships=selected_snapshot.relationships,
+            static_components=selected_snapshot.components,
+            target=lambda: run_repository_parser(
+                str(Path.cwd())
+            ),
+            include_prefixes=[
+                "features",
+                "src",
+                "architecture_model",
+            ],
+        )
+
     # --------------------------------------------------------
     # Compare snapshots
     # --------------------------------------------------------
@@ -1107,7 +1142,7 @@ def render_architecture_history():
     """
     Main Streamlit entry point.
 
-    Call this function from app.py.
+    Call this function from app2.py.
     """
 
     st.title(

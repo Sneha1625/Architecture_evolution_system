@@ -1,0 +1,214 @@
+{
+    "version": "1.0",
+    "commit_hash": "37e49eb",
+    "components": [
+        {
+            "id": "component_architecture_modeling_system",
+            "name": "Architecture Modeling System",
+            "responsibility": "Architecture Modeling System related functionality",
+            "layer": "module",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\app.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\app2.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\app3.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\migrate_database.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\repository_test.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\sample_project.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\schema_check.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\test_architecture_model.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\test_architecture_recovery.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\test_coupling.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\test_dep.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\test_env.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\database\\db.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\database\\repository.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\database\\schema.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\database\\test_repository.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\database\\__init__.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\repository\\loader.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\repository\\__init__.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\runtime_test_analyzer.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\runtime_test_parser.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_architecture_history.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_architecture_history_engine.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_history_integration.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_history_manager.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_real_history_pipeline.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_real_runtime.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_runtime_analyzer.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\tests\\test_runtime_comparator.py"
+            ],
+            "dependencies": [
+                "component_parser",
+                "component_analyzer",
+                "component_architect",
+                "component_dependency",
+                "component_embedder",
+                "component_features",
+                "component_architecture_model"
+            ]
+        },
+        {
+            "id": "component_architecture_model",
+            "name": "Architecture Model",
+            "responsibility": "Architecture Model related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\architecture_comparison.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\architecture_history_engine.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\git_history.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\history_manager.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\history_model.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\metrics.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\model.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\recovery.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\runtime_analyzer.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\runtime_comparator.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\runtime_model.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\snapshot_loader.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\architecture_model\\__init__.py"
+            ],
+            "dependencies": [
+                "component_architecture_modeling_system"
+            ]
+        },
+        {
+            "id": "component_features",
+            "name": "Features",
+            "responsibility": "Features related functionality",
+            "layer": "module",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\architecture_history.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\community_detector.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\coupling_miner.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\crossmoduleanalyser.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\impact_predictor.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\risk_predictor.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\runtime_application.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\runtime_architecture.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\runtime_mapping.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\runtime_pipeline.py",
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\features\\techdebt.py"
+            ],
+            "dependencies": [
+                "component_architecture_modeling_system",
+                "component_architecture_model",
+                "component_parser"
+            ]
+        },
+        {
+            "id": "component_analyzer",
+            "name": "Analyzer",
+            "responsibility": "Analyzer related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\src\\analyzer.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_architect",
+            "name": "Architect",
+            "responsibility": "Architect related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\src\\architect.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_dependency",
+            "name": "Dependency",
+            "responsibility": "Dependency related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\src\\dependency.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_embedder",
+            "name": "Embedder",
+            "responsibility": "Embedder related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\src\\embedder.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_parser",
+            "name": "Parser",
+            "responsibility": "Parser related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\Lahari VH\\OneDrive\\Desktop\\17-08-2026\\Architecture_evolution_system\\src\\parser.py"
+            ],
+            "dependencies": []
+        }
+    ],
+    "relationships": [
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_parser",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_analyzer",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_architect",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_dependency",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_embedder",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_features",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_architecture_model",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_model",
+            "target": "component_architecture_modeling_system",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_architecture_modeling_system",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_architecture_model",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_parser",
+            "type": "depends_on"
+        }
+    ],
+    "metrics": {
+        "total_components": 8,
+        "total_relationships": 11,
+        "total_files": 58
+    },
+    "violations": [],
+    "timestamp": "2026-09-22T11:26:01.062914"
+}
