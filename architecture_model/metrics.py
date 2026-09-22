@@ -603,3 +603,52 @@ def calculate_overall_health(components):
         "score": score,
         "status": status,
     }
+
+
+def save_metrics(snapshot_id, metrics):
+
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    for metric_name, metric_value in metrics.items():
+
+        if isinstance(metric_value, (int, float)):
+
+            cursor.execute(
+                """
+                INSERT INTO architecture_metrics
+                (
+                    snapshot_id,
+                    metric_name,
+                    metric_value
+                )
+                VALUES (?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    metric_name,
+                    float(metric_value),
+                ),
+            )
+
+        else:
+
+            cursor.execute(
+                """
+                INSERT INTO architecture_metrics
+                (
+                    snapshot_id,
+                    metric_name,
+                    metric_data
+                )
+                VALUES (?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    metric_name,
+                    str(metric_value),
+                ),
+            )
+
+    connection.commit()
+    connection.close()

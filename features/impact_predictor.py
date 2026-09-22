@@ -14,7 +14,6 @@ Combines three signals already computed separately:
 from features.coupling_miner import mine_logical_coupling
 from features.risk_predictor import compute_risk_scores
 
-
 def predict_change_impact(target_file, G, repo_path, parsed_files, max_commits=300):
     """
     Given a file someone is about to change, returns a ranked list of files
