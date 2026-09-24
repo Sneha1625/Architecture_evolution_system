@@ -24,6 +24,8 @@ st.set_page_config(
 )
 
 from features.architecture_history import render_architecture_history
+from features.runtime_architecture import render_runtime_architecture
+from features.runtime_pipeline import run_repository_parser
 # ============================================================
 # DATABASE
 # ============================================================
@@ -2193,6 +2195,7 @@ page = st.sidebar.radio(
         "Architecture Health",
         "Database Test",
         "Architecture History",
+        "Runtime Architecture",
 
     ],
 )
@@ -2233,6 +2236,11 @@ try:
 
     elif page == "Architecture History":
         render_architecture_history()
+
+    elif page == "Runtime Architecture":
+        render_runtime_architecture(
+            target=lambda: run_repository_parser(str(BASE_DIR))
+        )
 
 except sqlite3.Error as error:
 

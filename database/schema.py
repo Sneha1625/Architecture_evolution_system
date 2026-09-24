@@ -179,8 +179,71 @@ def create_tables():
         )
     """)
 
+
+    # =========================================================
+    # 9. RUNTIME EXECUTIONS
+    # =========================================================
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS runtime_executions (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            repository_id INTEGER NOT NULL,
+
+            snapshot_id INTEGER,
+
+            version TEXT,
+
+            commit_hash TEXT,
+
+            scenario TEXT,
+
+            entry_point TEXT,
+
+            total_calls INTEGER DEFAULT 0,
+
+            module_count INTEGER DEFAULT 0,
+
+            relationship_count INTEGER DEFAULT 0,
+
+            timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (repository_id)
+                REFERENCES repositories(id),
+
+            FOREIGN KEY (snapshot_id)
+                REFERENCES architecture_snapshots(id)
+        )
+    """)
+
+    # =========================================================
+    # 10. RUNTIME RELATIONSHIPS
+    # =========================================================
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS runtime_relationships (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            execution_id INTEGER NOT NULL,
+
+            source TEXT NOT NULL,
+
+            target TEXT NOT NULL,
+
+            call_count INTEGER DEFAULT 0,
+
+            functions TEXT,
+
+            FOREIGN KEY (execution_id)
+                REFERENCES runtime_executions(id)
+        )
+    """)
+
     connection.commit()
     connection.close()
+
 
 
 if __name__ == "__main__":
