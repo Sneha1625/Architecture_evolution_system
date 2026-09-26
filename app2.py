@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-
+from features.ai_analysis import render_ai_analysis
 import streamlit as st
 
 
@@ -1358,7 +1358,7 @@ def show_snapshot_comparison():
         before_id,
         after_id,
     )
-
+    
     added_components = sorted(
         changes["added_components"],
         key=str.lower,
@@ -2192,6 +2192,7 @@ page = st.sidebar.radio(
         "Relationships",
         "Architecture Graph",
         "Snapshot Comparison",
+        "AI Analysis",
         "Architecture Health",
         "Database Test",
         "Architecture History",
@@ -2227,6 +2228,9 @@ try:
 
     elif page == "Snapshot Comparison":
         show_snapshot_comparison()
+
+    elif page == "AI Analysis":
+        render_ai_analysis()
 
     elif page == "Architecture Health":
         show_architecture_health()
