@@ -747,6 +747,244 @@ def save_architecture_snapshot(
         # architecture snapshot in the database.
         connection.rollback()
         raise
+    # ============================================================
+# RUNTIME ARCHITECTURE PERSISTENCE
+# ============================================================
 
+import json
+
+from architecture_model.runtime_model import (
+    RuntimeArchitecture,
+    RuntimeRelationship,
+)
+
+
+def save_runtime_execution(
+    repository_id,
+    runtime_architecture,
+    snapshot_id=None,
+    version=None,
+    commit_hash=None,
+    scenario=None,
+):
+    """
+    Persist one runtime architecture execution.
+
+    Stores:
+        1. runtime execution metadata
+        2. aggregated runtime relationships
+
+    Returns:
+        int: runtime execution database ID
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        # ----------------------------------------------------
+        # 1. SAVE RUNTIME EXECUTION
+        # ----------------------------------------------------
+
+        cursor.execute(
+            """
+            INSERT INTO runtime_executions
+            (
+                repository_id,
+                snapshot_id,
+                version,
+                commit_hash,
+                scenario,
+                entry_point,
+                total_calls,
+                module_count,
+                relationship_count
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                repository_id,
+                snapshot_id,
+                version,
+                commit_hash,
+                scenario,
+                runtime_architecture.entry_point,
+                runtime_architecture.total_calls,
+                runtime_architecture.get_module_count(),
+                runtime_architecture.get_relationship_count(),
+            ),
+        )
+
+        execution_id = cursor.lastrowid
+
+        # ----------------------------------------------------
+        # 2. SAVE RUNTIME RELATIONSHIPS
+        # ----------------------------------------------------
+
+        for relationship in runtime_architecture.get_relationships():
+
+            cursor.execute(
+                """
+                INSERT INTO runtime_relationships
+                (
+                    execution_id,
+                    source,
+                    target,
+                    call_count,
+                    functions
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    execution_id,
+                    relationship.source,
+                    relationship.target,
+                    relationship.call_count,
+                    json.dumps(
+                        sorted(relationship.functions)
+                    ),
+                ),
+            )
+
+        connection.commit()
+
+        return execution_id
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
+
+
+def get_runtime_executions(
+    repository_id=None,
+    snapshot_id=None,
+):
+    """
+    Return saved runtime executions.
+
+    Can optionally filter by repository or snapshot.
+    """
+
+    connection = get_connection()
+
+    try:
+
+        if snapshot_id is not None:
+
+            return connection.execute(
+                """
+                SELECT *
+                FROM runtime_executions
+                WHERE snapshot_id = ?
+                ORDER BY timestamp DESC, id DESC
+                """,
+                (snapshot_id,),
+            ).fetchall()
+
+        if repository_id is not None:
+
+            return connection.execute(
+                """
+                SELECT *
+                FROM runtime_executions
+                WHERE repository_id = ?
+                ORDER BY timestamp DESC, id DESC
+                """,
+                (repository_id,),
+            ).fetchall()
+
+        return connection.execute(
+            """
+            SELECT *
+            FROM runtime_executions
+            ORDER BY timestamp DESC, id DESC
+            """
+        ).fetchall()
+
+    finally:
+        connection.close()
+
+
+def load_runtime_architecture(execution_id):
+    """
+    Reconstruct a RuntimeArchitecture object from the database.
+    """
+
+    connection = get_connection()
+
+    try:
+
+        execution = connection.execute(
+            """
+            SELECT *
+            FROM runtime_executions
+            WHERE id = ?
+            """,
+            (execution_id,),
+        ).fetchone()
+
+        if execution is None:
+            raise ValueError(
+                f"Runtime execution {execution_id} not found."
+            )
+
+        runtime_architecture = RuntimeArchitecture(
+            entry_point=execution["entry_point"] or ""
+        )
+
+        relationship_rows = connection.execute(
+            """
+            SELECT *
+            FROM runtime_relationships
+            WHERE execution_id = ?
+            ORDER BY id
+            """,
+            (execution_id,),
+        ).fetchall()
+
+        # Reconstruct aggregated relationships directly.
+        for row in relationship_rows:
+
+            try:
+                functions = set(
+                    json.loads(row["functions"] or "[]")
+                )
+            except (json.JSONDecodeError, TypeError):
+                functions = set()
+
+            relationship = RuntimeRelationship(
+                source=row["source"],
+                target=row["target"],
+                call_count=row["call_count"] or 0,
+                functions=functions,
+            )
+
+            relationship_key = (
+                f"{relationship.source}->{relationship.target}"
+            )
+
+            runtime_architecture.relationships[
+                relationship_key
+            ] = relationship
+
+            runtime_architecture.modules.add(
+                relationship.source
+            )
+
+            runtime_architecture.modules.add(
+                relationship.target
+            )
+
+        runtime_architecture.total_calls = (
+            execution["total_calls"] or 0
+        )
+
+        return runtime_architecture
+
+    
     finally:
         connection.close()
