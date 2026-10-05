@@ -44,13 +44,17 @@ import plotly.graph_objects as go
 from git import Repo
 from dotenv import load_dotenv
 
+from src.dependency import build_dependency_graph, draw_dependency_graph
+
 from database.repository import (
     save_repository,
     save_snapshot,
     save_component,
     save_relationship,
+    get_snapshots,
+    get_components,
+    get_relationships,
 )
-
 
 # ============================================================
 # PATH CONFIGURATION
@@ -659,42 +663,1032 @@ def parse_uploaded_files():
 # DEPENDENCY GRAPH
 # ============================================================
 
-def build_combined_dependency_graph(
-    file_paths,
-):
+# ============================================================
+# PAGE 6 — DEPENDENCY ANALYSIS
+# ============================================================
 
-    G = nx.DiGraph()
+if page == "🔗 Dependency Analysis":
 
-    for path in file_paths:
+    require_uploaded_files()
 
-        try:
+    st.header(
+        "🔗 Dependency Analysis"
+    )
 
-            subgraph = build_dependency_graph(
-                path
+    st.write(
+        """
+        Analyze software dependencies without combining every
+        function from the entire repository into one graph.
+
+        The system first shows a clean **module-level architecture**.
+        You can then select an individual Python file to inspect its
+        function and method dependencies.
+        """
+    )
+
+    # ========================================================
+    # STEP 1 — MODULE LEVEL
+    # ========================================================
+
+    st.subheader(
+        "1️⃣ Repository Module Dependencies"
+    )
+
+    st.caption(
+        "Each Python file is represented as one module. "
+        "This view is designed for large GitHub repositories."
+    )
+
+    if not file_paths:
+
+        st.warning(
+            "No Python files were found."
+        )
+
+    else:
+
+        if st.button(
+            "🏗️ Generate Module Dependency Graph",
+            type="primary",
+        ):
+
+            G_module = build_combined_dependency_graph(
+                file_paths
             )
 
-            G = nx.compose(
-                G,
-                subgraph,
-            )
+            if G_module.number_of_nodes() == 0:
 
-        except Exception as e:
+                st.warning(
+                    "No module dependencies detected."
+                )
 
-            st.warning(
-                f"Could not analyze `{path}`: {e}"
-            )
+            else:
 
-    return G
+                # --------------------------------------------
+                # CLEAN MODULE GRAPH
+                # --------------------------------------------
 
+                pos = nx.spring_layout(
+                    G_module,
+                    seed=42,
+                    k=2.5,
+                    iterations=200,
+                )
+
+                edge_x = []
+                edge_y = []
+
+                for source, target in G_module.edges():
+
+                    if (
+                        source not in pos
+                        or target not in pos
+                    ):
+                        continue
+
+                    x0, y0 = pos[source]
+                    x1, y1 = pos[target]
+
+                    edge_x.extend(
+                        [x0, x1, None]
+                    )
+
+                    edge_y.extend(
+                        [y0, y1, None]
+                    )
+
+                edge_trace = go.Scatter(
+                    x=edge_x,
+                    y=edge_y,
+                    mode="lines",
+                    line=dict(
+                        width=1.5
+                    ),
+                    hoverinfo="none",
+                )
+
+                node_x = []
+                node_y = []
+                node_text = []
+                node_hover = []
+
+                for node in G_module.nodes():
+
+                    x, y = pos[node]
+
+                    node_x.append(x)
+                    node_y.append(y)
+
+                    label = G_module.nodes[
+                        node
+                    ].get(
+                        "label",
+                        Path(node).stem,
+                    )
+
+                    node_text.append(
+                        label
+                    )
+
+                    node_hover.append(
+                        f"<b>{label}</b><br>"
+                        f"Path: {node}<br>"
+                        f"Dependencies: "
+                        f"{G_module.degree(node)}"
+                    )
+
+                node_trace = go.Scatter(
+                    x=node_x,
+                    y=node_y,
+                    mode="markers+text",
+                    text=node_text,
+                    textposition="top center",
+                    hovertext=node_hover,
+                    hoverinfo="text",
+                    marker=dict(
+                        size=30,
+                        line=dict(
+                            width=2
+                        ),
+                    ),
+                )
+
+                fig = go.Figure(
+                    data=[
+                        edge_trace,
+                        node_trace,
+                    ]
+                )
+
+                fig.update_layout(
+                    title={
+                        "text":
+                            "🏗️ Repository Module Dependency Architecture",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    showlegend=False,
+                    height=700,
+                    hovermode="closest",
+                    margin=dict(
+                        b=20,
+                        l=20,
+                        r=20,
+                        t=80,
+                    ),
+                    xaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                    ),
+                    yaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                    ),
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+                c1, c2, c3 = st.columns(3)
+
+                c1.metric(
+                    "Modules",
+                    G_module.number_of_nodes(),
+                )
+
+                c2.metric(
+                    "Module Dependencies",
+                    G_module.number_of_edges(),
+                )
+
+                c3.metric(
+                    "Graph Density",
+                    f"{nx.density(G_module):.3f}",
+                )
+
+    st.divider()
+
+    # ========================================================
+    # STEP 2 — SELECT ONE FILE
+    # ========================================================
+
+    st.subheader(
+        "2️⃣ Inspect Individual File"
+    )
+
+    st.caption(
+        "Select one Python file to see only its internal "
+        "function and method dependencies."
+    )
+
+    if not file_paths:
+
+        st.warning(
+            "No Python files available."
+        )
+
+    else:
+
+        selected_file = st.selectbox(
+            "Select a Python file",
+            file_paths,
+            format_func=lambda path:
+                get_relative_file_name(path),
+            key="dependency_selected_file",
+        )
+
+        if st.button(
+            "🔍 Analyze Selected File",
+            type="primary",
+        ):
+
+            try:
+
+                G_file = build_dependency_graph(
+                    selected_file
+                )
+
+                st.markdown(
+                    f"### 📄 {get_relative_file_name(selected_file)}"
+                )
+
+                if G_file.number_of_nodes() == 0:
+
+                    st.info(
+                        "No functions, classes or internal "
+                        "dependencies were detected in this file."
+                    )
+
+                else:
+
+                    # ----------------------------------------
+                    # FILE GRAPH
+                    # ----------------------------------------
+
+                    pos = nx.spring_layout(
+                        G_file,
+                        seed=42,
+                        k=2.5,
+                        iterations=200,
+                    )
+
+                    edge_x = []
+                    edge_y = []
+
+                    for source, target in G_file.edges():
+
+                        x0, y0 = pos[source]
+                        x1, y1 = pos[target]
+
+                        edge_x.extend(
+                            [x0, x1, None]
+                        )
+
+                        edge_y.extend(
+                            [y0, y1, None]
+                        )
+
+                    edge_trace = go.Scatter(
+                        x=edge_x,
+                        y=edge_y,
+                        mode="lines",
+                        line=dict(
+                            width=1.5
+                        ),
+                        hoverinfo="none",
+                    )
+
+                    node_x = []
+                    node_y = []
+                    node_text = []
+                    node_hover = []
+
+                    for node in G_file.nodes():
+
+                        x, y = pos[node]
+
+                        node_x.append(x)
+                        node_y.append(y)
+
+                        node_type = (
+                            G_file.nodes[
+                                node
+                            ].get(
+                                "type",
+                                "function",
+                            )
+                        )
+
+                        node_text.append(
+                            str(node)
+                        )
+
+                        node_hover.append(
+                            f"<b>{node}</b><br>"
+                            f"Type: {node_type}<br>"
+                            f"Connections: "
+                            f"{G_file.degree(node)}"
+                        )
+
+                    node_trace = go.Scatter(
+                        x=node_x,
+                        y=node_y,
+                        mode="markers+text",
+                        text=node_text,
+                        textposition="top center",
+                        hovertext=node_hover,
+                        hoverinfo="text",
+                        marker=dict(
+                            size=28,
+                            line=dict(
+                                width=2
+                            ),
+                        ),
+                    )
+
+                    fig = go.Figure(
+                        data=[
+                            edge_trace,
+                            node_trace,
+                        ]
+                    )
+
+                    fig.update_layout(
+                        title={
+                            "text":
+                                "🔗 Internal Function & Method Dependencies",
+                            "x": 0.5,
+                            "xanchor": "center",
+                        },
+                        showlegend=False,
+                        height=650,
+                        hovermode="closest",
+                        margin=dict(
+                            b=20,
+                            l=20,
+                            r=20,
+                            t=80,
+                        ),
+                        xaxis=dict(
+                            showgrid=False,
+                            zeroline=False,
+                            showticklabels=False,
+                        ),
+                        yaxis=dict(
+                            showgrid=False,
+                            zeroline=False,
+                            showticklabels=False,
+                        ),
+                    )
+
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True,
+                    )
+
+                    # ----------------------------------------
+                    # METRICS
+                    # ----------------------------------------
+
+                    c1, c2, c3 = st.columns(3)
+
+                    c1.metric(
+                        "Functions / Classes",
+                        G_file.number_of_nodes(),
+                    )
+
+                    c2.metric(
+                        "Internal Calls",
+                        G_file.number_of_edges(),
+                    )
+
+                    c3.metric(
+                        "Density",
+                        f"{nx.density(G_file):.3f}",
+                    )
+
+                    # ----------------------------------------
+                    # DEPENDENCY TABLE
+                    # ----------------------------------------
+
+                    st.markdown(
+                        "### 📋 Detected Internal Dependencies"
+                    )
+
+                    dependency_rows = []
+
+                    for source, target in G_file.edges():
+
+                        dependency_rows.append(
+                            {
+                                "Source":
+                                    source,
+
+                                "Depends On":
+                                    target,
+
+                                "Relationship":
+                                    "Function / Method Call",
+                            }
+                        )
+
+                    if dependency_rows:
+
+                        st.dataframe(
+                            dependency_rows,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+                    else:
+
+                        st.info(
+                            "No internal function calls detected."
+                        )
+
+            except Exception as e:
+
+                st.error(
+                    f"Dependency analysis failed: {e}"
+                )
+
+                st.exception(e)
 
 # ============================================================
 # ARCHITECTURE GRAPH
 # ============================================================
 
-def create_architecture_graph(
-    G,
-):
 
+def create_architecture_graph(G, key="architecture_graph"):
+
+    import time
+
+    if G.number_of_nodes() == 0:
+        st.warning("No architecture nodes were detected.")
+        return
+
+    # ========================================================
+    # STABLE NODE ORDER
+    # ========================================================
+
+    nodes = list(G.nodes())
+
+    # Put highly connected nodes earlier.
+    nodes = sorted(
+        nodes,
+        key=lambda n: G.degree(n),
+        reverse=True,
+    )
+
+    # ========================================================
+    # STABLE LAYOUT
+    # ========================================================
+
+    # Use a larger spacing value so nodes are not packed together.
+    pos = nx.spring_layout(
+        G,
+        seed=42,
+        k=4.5,
+        iterations=200,
+        scale=10,
+    )
+
+    # ========================================================
+    # SESSION STATE
+    # ========================================================
+
+    step_key = f"{key}_step"
+    running_key = f"{key}_running"
+
+    if step_key not in st.session_state:
+        st.session_state[step_key] = 0
+
+    if running_key not in st.session_state:
+        st.session_state[running_key] = False
+
+    # ========================================================
+    # CONTROLS
+    # ========================================================
+
+    st.markdown("### 🎬 Architecture Visualization")
+
+    mode = st.radio(
+        "Visualization Mode",
+        [
+            "👁 Overview",
+            "🪜 Step-by-Step",
+            "▶ Build Animation",
+        ],
+        horizontal=True,
+        key=f"{key}_mode",
+    )
+
+    # ========================================================
+    # OVERVIEW
+    # ========================================================
+
+    if mode == "👁 Overview":
+
+        visible_nodes = nodes
+
+    # ========================================================
+    # STEP BY STEP
+    # ========================================================
+
+    elif mode == "🪜 Step-by-Step":
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        with c1:
+            if st.button(
+                "⏮ Reset",
+                key=f"{key}_reset",
+                use_container_width=True,
+            ):
+                st.session_state[step_key] = 0
+                st.rerun()
+
+        with c2:
+            if st.button(
+                "◀ Previous",
+                key=f"{key}_previous",
+                use_container_width=True,
+            ):
+                st.session_state[step_key] = max(
+                    0,
+                    st.session_state[step_key] - 1,
+                )
+                st.rerun()
+
+        with c3:
+            if st.button(
+                "Next ▶",
+                key=f"{key}_next",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state[step_key] = min(
+                    len(nodes),
+                    st.session_state[step_key] + 1,
+                )
+                st.rerun()
+
+        with c4:
+            st.metric(
+                "Architecture Step",
+                f"{st.session_state[step_key]} / {len(nodes)}",
+            )
+
+        visible_nodes = nodes[
+            :st.session_state[step_key]
+        ]
+
+        st.progress(
+            st.session_state[step_key] / max(len(nodes), 1)
+        )
+
+        if not visible_nodes:
+            st.info(
+                "Click **Next ▶** to start building the architecture."
+            )
+
+    # ========================================================
+    # AUTOMATIC ANIMATION
+    # ========================================================
+
+    else:
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+
+            speed = st.select_slider(
+                "Animation Speed",
+                options=[
+                    "Very Slow",
+                    "Slow",
+                    "Normal",
+                    "Fast",
+                    "Very Fast",
+                ],
+                value="Normal",
+                key=f"{key}_speed",
+            )
+
+        speed_values = {
+            "Very Slow": 0.8,
+            "Slow": 0.5,
+            "Normal": 0.25,
+            "Fast": 0.12,
+            "Very Fast": 0.05,
+        }
+
+        with c2:
+
+            if st.button(
+                "▶ Start Animation",
+                type="primary",
+                key=f"{key}_start",
+                use_container_width=True,
+            ):
+                st.session_state[step_key] = 0
+                st.session_state[running_key] = True
+
+        with c3:
+
+            if st.button(
+                "🔄 Reset",
+                key=f"{key}_animation_reset",
+                use_container_width=True,
+            ):
+                st.session_state[step_key] = 0
+                st.session_state[running_key] = False
+                st.rerun()
+
+        # ----------------------------------------------------
+        # PLACEHOLDER FOR LIVE GRAPH
+        # ----------------------------------------------------
+
+        graph_placeholder = st.empty()
+        progress_placeholder = st.empty()
+
+        if st.session_state[running_key]:
+
+            for current_step in range(
+                st.session_state[step_key],
+                len(nodes) + 1,
+            ):
+
+                visible_nodes = nodes[
+                    :current_step
+                ]
+
+                # --------------------------------------------
+                # BUILD EDGES ONLY BETWEEN VISIBLE NODES
+                # --------------------------------------------
+
+                visible_set = set(
+                    visible_nodes
+                )
+
+                visible_edges = [
+                    (source, target)
+                    for source, target in G.edges()
+                    if source in visible_set
+                    and target in visible_set
+                ]
+
+                # --------------------------------------------
+                # EDGE DATA
+                # --------------------------------------------
+
+                edge_x = []
+                edge_y = []
+
+                for source, target in visible_edges:
+
+                    if (
+                        source not in pos
+                        or target not in pos
+                    ):
+                        continue
+
+                    x0, y0 = pos[source]
+                    x1, y1 = pos[target]
+
+                    edge_x.extend(
+                        [x0, x1, None]
+                    )
+
+                    edge_y.extend(
+                        [y0, y1, None]
+                    )
+
+                edge_trace = go.Scatter(
+                    x=edge_x,
+                    y=edge_y,
+                    mode="lines",
+                    line=dict(
+                        width=1.2
+                    ),
+                    hoverinfo="none",
+                )
+
+                # --------------------------------------------
+                # NODE DATA
+                # --------------------------------------------
+
+                node_x = []
+                node_y = []
+                node_text = []
+                node_hover = []
+
+                for node in visible_nodes:
+
+                    x, y = pos[node]
+
+                    node_x.append(x)
+                    node_y.append(y)
+
+                    label = str(
+                        G.nodes[node].get(
+                            "label",
+                            Path(
+                                str(node)
+                            ).stem,
+                        )
+                    )
+
+                    node_text.append(
+                        label
+                    )
+
+                    node_hover.append(
+                        f"<b>{label}</b><br>"
+                        f"Connections: "
+                        f"{G.degree(node)}"
+                    )
+
+                node_trace = go.Scatter(
+                    x=node_x,
+                    y=node_y,
+                    mode="markers+text",
+                    text=node_text,
+                    textposition="top center",
+                    textfont=dict(
+                        size=10
+                    ),
+                    hovertext=node_hover,
+                    hoverinfo="text",
+                    marker=dict(
+                        size=24,
+                        line=dict(
+                            width=1.5
+                        ),
+                    ),
+                )
+
+                # --------------------------------------------
+                # FIGURE
+                # --------------------------------------------
+
+                fig = go.Figure(
+                    data=[
+                        edge_trace,
+                        node_trace,
+                    ]
+                )
+
+                fig.update_layout(
+                    title={
+                        "text":
+                            "🏗️ Recovered Software Architecture",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    showlegend=False,
+                    height=700,
+                    hovermode="closest",
+                    margin=dict(
+                        b=40,
+                        l=40,
+                        r=40,
+                        t=80,
+                    ),
+                    xaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                        range=[
+                            -11,
+                            11,
+                        ],
+                    ),
+                    yaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                        range=[
+                            -11,
+                            11,
+                        ],
+                    ),
+                )
+
+                graph_placeholder.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                    key=f"{key}_animation_{current_step}",
+                )
+
+                progress_placeholder.progress(
+                    current_step / max(
+                        len(nodes),
+                        1,
+                    ),
+                    text=(
+                        f"Building architecture: "
+                        f"{current_step} / "
+                        f"{len(nodes)} components"
+                    ),
+                )
+
+                st.session_state[step_key] = (
+                    current_step
+                )
+
+                time.sleep(
+                    speed_values[speed]
+                )
+
+            st.session_state[running_key] = False
+
+        else:
+
+            visible_nodes = nodes[
+                :st.session_state[step_key]
+            ]
+
+    # ========================================================
+    # DRAW STATIC GRAPH
+    # ========================================================
+
+    if mode != "▶ Build Animation":
+
+        visible_set = set(
+            visible_nodes
+        )
+
+        # ----------------------------------------------------
+        # EDGES
+        # ----------------------------------------------------
+
+        edge_x = []
+        edge_y = []
+
+        for source, target in G.edges():
+
+            if (
+                source not in visible_set
+                or target not in visible_set
+            ):
+                continue
+
+            if (
+                source not in pos
+                or target not in pos
+            ):
+                continue
+
+            x0, y0 = pos[source]
+            x1, y1 = pos[target]
+
+            edge_x.extend(
+                [x0, x1, None]
+            )
+
+            edge_y.extend(
+                [y0, y1, None]
+            )
+
+        edge_trace = go.Scatter(
+            x=edge_x,
+            y=edge_y,
+            mode="lines",
+            line=dict(
+                width=1.2
+            ),
+            hoverinfo="none",
+        )
+
+        # ----------------------------------------------------
+        # NODES
+        # ----------------------------------------------------
+
+        node_x = []
+        node_y = []
+        node_text = []
+        node_hover = []
+
+        for node in visible_nodes:
+
+            x, y = pos[node]
+
+            node_x.append(x)
+            node_y.append(y)
+
+            label = str(
+                G.nodes[node].get(
+                    "label",
+                    Path(
+                        str(node)
+                    ).stem,
+                )
+            )
+
+            node_text.append(
+                label
+            )
+
+            node_hover.append(
+                f"<b>{label}</b><br>"
+                f"Connections: "
+                f"{G.degree(node)}"
+            )
+
+        node_trace = go.Scatter(
+            x=node_x,
+            y=node_y,
+            mode="markers+text",
+            text=node_text,
+            textposition="top center",
+            textfont=dict(
+                size=10
+            ),
+            hovertext=node_hover,
+            hoverinfo="text",
+            marker=dict(
+                size=24,
+                line=dict(
+                    width=1.5
+                ),
+            ),
+        )
+
+        # ----------------------------------------------------
+        # FIGURE
+        # ----------------------------------------------------
+
+        fig = go.Figure(
+            data=[
+                edge_trace,
+                node_trace,
+            ]
+        )
+
+        fig.update_layout(
+            title={
+                "text":
+                    "🏗️ Recovered Software Architecture",
+                "x": 0.5,
+                "xanchor": "center",
+            },
+            showlegend=False,
+            height=700,
+            hovermode="closest",
+            margin=dict(
+                b=40,
+                l=40,
+                r=40,
+                t=80,
+            ),
+            xaxis=dict(
+                showgrid=False,
+                zeroline=False,
+                showticklabels=False,
+            ),
+            yaxis=dict(
+                showgrid=False,
+                zeroline=False,
+                showticklabels=False,
+            ),
+        )
+
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key=f"{key}_static",
+        )
+
+    # ========================================================
+    # METRICS
+    # ========================================================
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "Architecture Components",
+        len(visible_nodes),
+    )
+
+    c2.metric(
+        "Visible Relationships",
+        sum(
+            1
+            for source, target in G.edges()
+            if source in set(visible_nodes)
+            and target in set(visible_nodes)
+        ),
+    )
+
+    c3.metric(
+        "Total Components",
+        G.number_of_nodes(),
+    )
     if G.number_of_nodes() == 0:
 
         st.warning(
@@ -914,6 +1908,110 @@ def snapshot_to_dict(
             pass
 
     return data
+
+
+def compare_architecture_snapshots(snapshot_a, snapshot_b):
+    """Compare two architecture snapshots and return structural changes."""
+
+    data_a = snapshot_to_dict(snapshot_a)
+    data_b = snapshot_to_dict(snapshot_b)
+
+    def component_name(component):
+        if isinstance(component, dict):
+            return str(
+                component.get(
+                    "name",
+                    component.get("component_name", ""),
+                )
+            )
+
+        return str(
+            getattr(
+                component,
+                "name",
+                getattr(component, "component_name", ""),
+            )
+        )
+
+    def relationship_key(relationship):
+        if isinstance(relationship, dict):
+            source = relationship.get(
+                "source",
+                relationship.get("source_component", ""),
+            )
+            target = relationship.get(
+                "target",
+                relationship.get("target_component", ""),
+            )
+            relationship_type = relationship.get(
+                "relationship_type",
+                relationship.get("type", ""),
+            )
+        else:
+            source = getattr(
+                relationship,
+                "source",
+                getattr(relationship, "source_component", ""),
+            )
+            target = getattr(
+                relationship,
+                "target",
+                getattr(relationship, "target_component", ""),
+            )
+            relationship_type = getattr(
+                relationship,
+                "relationship_type",
+                getattr(relationship, "type", ""),
+            )
+
+        return (
+            str(source),
+            str(target),
+            str(relationship_type),
+        )
+
+    components_a = {
+        component_name(component)
+        for component in data_a.get("components", [])
+        if component_name(component)
+    }
+
+    components_b = {
+        component_name(component)
+        for component in data_b.get("components", [])
+        if component_name(component)
+    }
+
+    relationships_a = {
+        relationship_key(relationship)
+        for relationship in data_a.get("relationships", [])
+    }
+
+    relationships_b = {
+        relationship_key(relationship)
+        for relationship in data_b.get("relationships", [])
+    }
+
+    return {
+        "added_components": sorted(
+            components_b - components_a
+        ),
+        "removed_components": sorted(
+            components_a - components_b
+        ),
+        "unchanged_components": sorted(
+            components_a & components_b
+        ),
+        "added_relationships": sorted(
+            relationships_b - relationships_a
+        ),
+        "removed_relationships": sorted(
+            relationships_a - relationships_b
+        ),
+        "unchanged_relationships": sorted(
+            relationships_a & relationships_b
+        ),
+    }
 
 
 def display_architecture_snapshot(
@@ -2689,6 +3787,10 @@ if page == "🏗️ Architecture Model":
 # PAGE 6 — DEPENDENCY ANALYSIS
 # ============================================================
 
+# ============================================================
+# PAGE 6 — DEPENDENCY ANALYSIS
+# ============================================================
+
 if page == "🔗 Dependency Analysis":
 
     require_uploaded_files()
@@ -2699,64 +3801,446 @@ if page == "🔗 Dependency Analysis":
 
     st.write(
         """
-        Recover direct dependencies between files/modules
-        and inspect the resulting dependency graph.
+        Analyze software dependencies without combining every
+        function from the entire repository into one graph.
+
+        The system first shows a clean **module-level architecture**.
+        You can then select an individual Python file to inspect its
+        function and method dependencies.
         """
     )
 
-    if st.button(
-        "Generate Dependency Graph",
-        type="primary",
-    ):
+    # ========================================================
+    # STEP 1 — MODULE LEVEL
+    # ========================================================
 
-        G = build_combined_dependency_graph(
-            file_paths
+    st.subheader(
+        "1️⃣ Repository Module Dependencies"
+    )
+
+    st.caption(
+        "Each Python file is represented as one module. "
+        "This view is designed for large GitHub repositories."
+    )
+
+    if not file_paths:
+
+        st.warning(
+            "No Python files were found."
         )
 
-        if G.number_of_nodes() == 0:
+    else:
 
-            st.warning(
-                "No dependencies detected."
+        if st.button(
+            "🏗️ Generate Module Dependency Graph",
+            type="primary",
+        ):
+
+            G_module = build_combined_dependency_graph(
+                file_paths
             )
 
-        else:
+            if G_module.number_of_nodes() == 0:
 
-            create_architecture_graph(
-                G
-            )
-
-            cycles = list(
-                nx.simple_cycles(G)
-            )
-
-            st.subheader(
-                "Circular Dependencies"
-            )
-
-            if cycles:
-
-                st.error(
-                    f"⚠️ {len(cycles)} circular dependency "
-                    f"cycle(s) detected."
+                st.warning(
+                    "No module dependencies detected."
                 )
-
-                for cycle in cycles[:20]:
-
-                    st.write(
-                        " → ".join(
-                            map(
-                                str,
-                                cycle,
-                            )
-                        )
-                    )
 
             else:
 
-                st.success(
-                    "✅ No circular dependencies detected."
+                # --------------------------------------------
+                # CLEAN MODULE GRAPH
+                # --------------------------------------------
+
+                pos = nx.spring_layout(
+                    G_module,
+                    seed=42,
+                    k=2.5,
+                    iterations=200,
                 )
 
+                edge_x = []
+                edge_y = []
+
+                for source, target in G_module.edges():
+
+                    if (
+                        source not in pos
+                        or target not in pos
+                    ):
+                        continue
+
+                    x0, y0 = pos[source]
+                    x1, y1 = pos[target]
+
+                    edge_x.extend(
+                        [x0, x1, None]
+                    )
+
+                    edge_y.extend(
+                        [y0, y1, None]
+                    )
+
+                edge_trace = go.Scatter(
+                    x=edge_x,
+                    y=edge_y,
+                    mode="lines",
+                    line=dict(
+                        width=1.5
+                    ),
+                    hoverinfo="none",
+                )
+
+                node_x = []
+                node_y = []
+                node_text = []
+                node_hover = []
+
+                for node in G_module.nodes():
+
+                    x, y = pos[node]
+
+                    node_x.append(x)
+                    node_y.append(y)
+
+                    label = G_module.nodes[
+                        node
+                    ].get(
+                        "label",
+                        Path(node).stem,
+                    )
+
+                    node_text.append(
+                        label
+                    )
+
+                    node_hover.append(
+                        f"<b>{label}</b><br>"
+                        f"Path: {node}<br>"
+                        f"Dependencies: "
+                        f"{G_module.degree(node)}"
+                    )
+
+                node_trace = go.Scatter(
+                    x=node_x,
+                    y=node_y,
+                    mode="markers+text",
+                    text=node_text,
+                    textposition="top center",
+                    hovertext=node_hover,
+                    hoverinfo="text",
+                    marker=dict(
+                        size=30,
+                        line=dict(
+                            width=2
+                        ),
+                    ),
+                )
+
+                fig = go.Figure(
+                    data=[
+                        edge_trace,
+                        node_trace,
+                    ]
+                )
+
+                fig.update_layout(
+                    title={
+                        "text":
+                            "🏗️ Repository Module Dependency Architecture",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    showlegend=False,
+                    height=700,
+                    hovermode="closest",
+                    margin=dict(
+                        b=20,
+                        l=20,
+                        r=20,
+                        t=80,
+                    ),
+                    xaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                    ),
+                    yaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        showticklabels=False,
+                    ),
+                )
+
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                )
+
+                c1, c2, c3 = st.columns(3)
+
+                c1.metric(
+                    "Modules",
+                    G_module.number_of_nodes(),
+                )
+
+                c2.metric(
+                    "Module Dependencies",
+                    G_module.number_of_edges(),
+                )
+
+                c3.metric(
+                    "Graph Density",
+                    f"{nx.density(G_module):.3f}",
+                )
+
+    st.divider()
+
+    # ========================================================
+    # STEP 2 — SELECT ONE FILE
+    # ========================================================
+
+    st.subheader(
+        "2️⃣ Inspect Individual File"
+    )
+
+    st.caption(
+        "Select one Python file to see only its internal "
+        "function and method dependencies."
+    )
+
+    if not file_paths:
+
+        st.warning(
+            "No Python files available."
+        )
+
+    else:
+
+        selected_file = st.selectbox(
+            "Select a Python file",
+            file_paths,
+            format_func=lambda path:
+                get_relative_file_name(path),
+            key="dependency_selected_file",
+        )
+
+        if st.button(
+            "🔍 Analyze Selected File",
+            type="primary",
+        ):
+
+            try:
+
+                G_file = build_dependency_graph(
+                    selected_file
+                )
+
+                st.markdown(
+                    f"### 📄 {get_relative_file_name(selected_file)}"
+                )
+
+                if G_file.number_of_nodes() == 0:
+
+                    st.info(
+                        "No functions, classes or internal "
+                        "dependencies were detected in this file."
+                    )
+
+                else:
+
+                    # ----------------------------------------
+                    # FILE GRAPH
+                    # ----------------------------------------
+
+                    pos = nx.spring_layout(
+                        G_file,
+                        seed=42,
+                        k=2.5,
+                        iterations=200,
+                    )
+
+                    edge_x = []
+                    edge_y = []
+
+                    for source, target in G_file.edges():
+
+                        x0, y0 = pos[source]
+                        x1, y1 = pos[target]
+
+                        edge_x.extend(
+                            [x0, x1, None]
+                        )
+
+                        edge_y.extend(
+                            [y0, y1, None]
+                        )
+
+                    edge_trace = go.Scatter(
+                        x=edge_x,
+                        y=edge_y,
+                        mode="lines",
+                        line=dict(
+                            width=1.5
+                        ),
+                        hoverinfo="none",
+                    )
+
+                    node_x = []
+                    node_y = []
+                    node_text = []
+                    node_hover = []
+
+                    for node in G_file.nodes():
+
+                        x, y = pos[node]
+
+                        node_x.append(x)
+                        node_y.append(y)
+
+                        node_type = (
+                            G_file.nodes[
+                                node
+                            ].get(
+                                "type",
+                                "function",
+                            )
+                        )
+
+                        node_text.append(
+                            str(node)
+                        )
+
+                        node_hover.append(
+                            f"<b>{node}</b><br>"
+                            f"Type: {node_type}<br>"
+                            f"Connections: "
+                            f"{G_file.degree(node)}"
+                        )
+
+                    node_trace = go.Scatter(
+                        x=node_x,
+                        y=node_y,
+                        mode="markers+text",
+                        text=node_text,
+                        textposition="top center",
+                        hovertext=node_hover,
+                        hoverinfo="text",
+                        marker=dict(
+                            size=28,
+                            line=dict(
+                                width=2
+                            ),
+                        ),
+                    )
+
+                    fig = go.Figure(
+                        data=[
+                            edge_trace,
+                            node_trace,
+                        ]
+                    )
+
+                    fig.update_layout(
+                        title={
+                            "text":
+                                "🔗 Internal Function & Method Dependencies",
+                            "x": 0.5,
+                            "xanchor": "center",
+                        },
+                        showlegend=False,
+                        height=650,
+                        hovermode="closest",
+                        margin=dict(
+                            b=20,
+                            l=20,
+                            r=20,
+                            t=80,
+                        ),
+                        xaxis=dict(
+                            showgrid=False,
+                            zeroline=False,
+                            showticklabels=False,
+                        ),
+                        yaxis=dict(
+                            showgrid=False,
+                            zeroline=False,
+                            showticklabels=False,
+                        ),
+                    )
+
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True,
+                    )
+
+                    # ----------------------------------------
+                    # METRICS
+                    # ----------------------------------------
+
+                    c1, c2, c3 = st.columns(3)
+
+                    c1.metric(
+                        "Functions / Classes",
+                        G_file.number_of_nodes(),
+                    )
+
+                    c2.metric(
+                        "Internal Calls",
+                        G_file.number_of_edges(),
+                    )
+
+                    c3.metric(
+                        "Density",
+                        f"{nx.density(G_file):.3f}",
+                    )
+
+                    # ----------------------------------------
+                    # DEPENDENCY TABLE
+                    # ----------------------------------------
+
+                    st.markdown(
+                        "### 📋 Detected Internal Dependencies"
+                    )
+
+                    dependency_rows = []
+
+                    for source, target in G_file.edges():
+
+                        dependency_rows.append(
+                            {
+                                "Source":
+                                    source,
+
+                                "Depends On":
+                                    target,
+
+                                "Relationship":
+                                    "Function / Method Call",
+                            }
+                        )
+
+                    if dependency_rows:
+
+                        st.dataframe(
+                            dependency_rows,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+                    else:
+
+                        st.info(
+                            "No internal function calls detected."
+                        )
+
+            except Exception as e:
+
+                st.error(
+                    f"Dependency analysis failed: {e}"
+                )
+
+                st.exception(e)
 
 # ============================================================
 # PAGE 7 — ARCHITECTURE METRICS
@@ -4454,90 +5938,405 @@ if page == "⏳ Architecture Time Machine":
                     st.divider()
 
                     st.markdown(
-                        "### 🔄 Architecture Evolution"
+                        "### Architecture Evolution"
                     )
 
                     st.caption(
-                        "Compare recovered architecture snapshots "
-                        "across Git commits."
+                        "Compare two architecture snapshots and identify "
+                        "component and relationship changes."
                     )
 
-                    comparison_rows = []
+                    snapshot_labels = []
 
-                    for snapshot in snapshots:
+                    for index, snapshot in enumerate(snapshots):
 
-                        data = snapshot_to_dict(
-                            snapshot
+                        data = snapshot_to_dict(snapshot)
+
+                        commit_hash = str(
+                            data.get(
+                                "commit_hash",
+                                "unknown",
+                            )
                         )
 
-                        metrics = data.get(
+                        version = str(
+                            data.get(
+                                "version",
+                                "",
+                            )
+                        )
+
+                        if version:
+                            label = (
+                                f"{version} - "
+                                f"{commit_hash[:7]}"
+                            )
+                        else:
+                            label = commit_hash[:7]
+
+                        snapshot_labels.append(
+                            f"{index}: {label}"
+                        )
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+
+                        older_index = st.selectbox(
+                            "Older snapshot",
+                            range(len(snapshots)),
+                            index=min(
+                                len(snapshots) - 1,
+                                1,
+                            ),
+                            format_func=lambda i: snapshot_labels[i],
+                            key="comparison_older_snapshot",
+                        )
+
+                    with col2:
+
+                        newer_index = st.selectbox(
+                            "Newer snapshot",
+                            range(len(snapshots)),
+                            index=0,
+                            format_func=lambda i: snapshot_labels[i],
+                            key="comparison_newer_snapshot",
+                        )
+
+                    if older_index == newer_index:
+
+                        st.warning(
+                            "Select two different snapshots to compare."
+                        )
+
+                    else:
+
+                        older_snapshot = snapshots[older_index]
+                        newer_snapshot = snapshots[newer_index]
+
+                        changes = compare_architecture_snapshots(
+                            older_snapshot,
+                            newer_snapshot,
+                        )
+
+                        added_components = changes[
+                            "added_components"
+                        ]
+
+                        removed_components = changes[
+                            "removed_components"
+                        ]
+
+                        added_relationships = changes[
+                            "added_relationships"
+                        ]
+
+                        removed_relationships = changes[
+                            "removed_relationships"
+                        ]
+
+                        metric_cols = st.columns(4)
+
+                        with metric_cols[0]:
+
+                            st.metric(
+                                "Components Added",
+                                len(added_components),
+                            )
+
+                        with metric_cols[1]:
+
+                            st.metric(
+                                "Components Removed",
+                                len(removed_components),
+                            )
+
+                        with metric_cols[2]:
+
+                            st.metric(
+                                "Relationships Added",
+                                len(added_relationships),
+                            )
+
+                        with metric_cols[3]:
+
+                            st.metric(
+                                "Relationships Removed",
+                                len(removed_relationships),
+                            )
+
+                        st.markdown("#### Component Changes")
+
+                        component_col1, component_col2 = st.columns(2)
+
+                        with component_col1:
+
+                            st.markdown("**Added Components**")
+
+                            if added_components:
+
+                                for component in added_components:
+
+                                    st.success(
+                                        component
+                                    )
+
+                            else:
+
+                                st.info(
+                                    "No components were added."
+                                )
+
+                        with component_col2:
+
+                            st.markdown("**Removed Components**")
+
+                            if removed_components:
+
+                                for component in removed_components:
+
+                                    st.error(
+                                        component
+                                    )
+
+                            else:
+
+                                st.info(
+                                    "No components were removed."
+                                )
+
+                        st.markdown("#### Relationship Changes")
+
+                        relationship_col1, relationship_col2 = st.columns(2)
+
+                        def format_relationship(relationship):
+
+                            source, target, relationship_type = (
+                                relationship
+                            )
+
+                            if relationship_type:
+
+                                return (
+                                    f"{source} -> {target} "
+                                    f"({relationship_type})"
+                                )
+
+                            return (
+                                f"{source} -> {target}"
+                            )
+
+                        with relationship_col1:
+
+                            st.markdown(
+                                "**Added Relationships**"
+                            )
+
+                            if added_relationships:
+
+                                for relationship in added_relationships:
+
+                                    st.success(
+                                        format_relationship(
+                                            relationship
+                                        )
+                                    )
+
+                            else:
+
+                                st.info(
+                                    "No relationships were added."
+                                )
+
+                        with relationship_col2:
+
+                            st.markdown(
+                                "**Removed Relationships**"
+                            )
+
+                            if removed_relationships:
+
+                                for relationship in removed_relationships:
+
+                                    st.error(
+                                        format_relationship(
+                                            relationship
+                                        )
+                                    )
+
+                            else:
+
+                                st.info(
+                                    "No relationships were removed."
+                                )
+
+                        st.markdown("#### Evolution Summary")
+
+                        older_data = snapshot_to_dict(
+                            older_snapshot
+                        )
+
+                        newer_data = snapshot_to_dict(
+                            newer_snapshot
+                        )
+
+                        older_metrics = older_data.get(
+                            "metrics",
+                            {},
+                        )
+
+                        newer_metrics = newer_data.get(
                             "metrics",
                             {},
                         )
 
                         if not isinstance(
-                            metrics,
+                            older_metrics,
                             dict,
                         ):
 
-                            metrics = {}
+                            older_metrics = {}
 
-                        comparison_rows.append({
+                        if not isinstance(
+                            newer_metrics,
+                            dict,
+                        ):
 
-                            "Commit":
-                                str(
-                                    data.get(
-                                        "commit_hash",
-                                        "unknown",
+                            newer_metrics = {}
+
+                        summary_rows = [
+
+                            {
+                                "Metric": "Components",
+                                "Older": len(
+                                    older_data.get(
+                                        "components",
+                                        [],
                                     )
-                                )[:7],
-
-                            "Components":
-                                metrics.get(
-                                    "total_components",
+                                ),
+                                "Newer": len(
+                                    newer_data.get(
+                                        "components",
+                                        [],
+                                    )
+                                ),
+                                "Change": (
                                     len(
-                                        data.get(
+                                        newer_data.get(
                                             "components",
                                             [],
                                         )
-                                    ),
-                                ),
-
-                            "Relationships":
-                                metrics.get(
-                                    "total_relationships",
+                                    )
+                                    -
                                     len(
-                                        data.get(
+                                        older_data.get(
+                                            "components",
+                                            [],
+                                        )
+                                    )
+                                ),
+                            },
+
+                            {
+                                "Metric": "Relationships",
+                                "Older": len(
+                                    older_data.get(
+                                        "relationships",
+                                        [],
+                                    )
+                                ),
+                                "Newer": len(
+                                    newer_data.get(
+                                        "relationships",
+                                        [],
+                                    )
+                                ),
+                                "Change": (
+                                    len(
+                                        newer_data.get(
                                             "relationships",
                                             [],
                                         )
-                                    ),
+                                    )
+                                    -
+                                    len(
+                                        older_data.get(
+                                            "relationships",
+                                            [],
+                                        )
+                                    )
                                 ),
+                            },
 
-                            "Files":
-                                metrics.get(
-                                    "total_files",
-                                    0,
-                                ),
-
-                            "Violations":
-                                len(
-                                    data.get(
+                            {
+                                "Metric": "Violations",
+                                "Older": len(
+                                    older_data.get(
                                         "violations",
                                         [],
                                     )
                                 ),
+                                "Newer": len(
+                                    newer_data.get(
+                                        "violations",
+                                        [],
+                                    )
+                                ),
+                                "Change": (
+                                    len(
+                                        newer_data.get(
+                                            "violations",
+                                            [],
+                                        )
+                                    )
+                                    -
+                                    len(
+                                        older_data.get(
+                                            "violations",
+                                            [],
+                                        )
+                                    )
+                                ),
+                            },
 
-                        })
+                            {
+                                "Metric": "Files",
+                                "Older": older_metrics.get(
+                                    "total_files",
+                                    0,
+                                ),
+                                "Newer": newer_metrics.get(
+                                    "total_files",
+                                    0,
+                                ),
+                                "Change": (
+                                    newer_metrics.get(
+                                        "total_files",
+                                        0,
+                                    )
+                                    -
+                                    older_metrics.get(
+                                        "total_files",
+                                        0,
+                                    )
+                                ),
+                            },
+                        ]
 
-                    st.dataframe(
-                        comparison_rows,
-                        use_container_width=True,
-                        hide_index=True,
+                        st.dataframe(
+                            summary_rows,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+                else:
+
+                    st.info(
+                        "At least two architecture snapshots are required "
+                        "for comparison."
                     )
 
 
-# ============================================================
 # CLEANUP
 # ============================================================
 
