@@ -363,3 +363,122 @@ def draw_dependency_graph(G, output_path=None):
     else:
 
         plt.show()
+
+# ============================================================
+# BUILD COMBINED MODULE DEPENDENCY GRAPH
+# ============================================================
+
+def build_combined_dependency_graph(file_paths):
+    """
+    Build a module-level dependency graph for a repository.
+
+    Each Python file is represented as one node.
+    Edges represent imports between repository modules.
+    """
+
+    import os
+    from pathlib import Path
+
+    G = nx.DiGraph()
+
+    if not file_paths:
+        return G
+
+    file_paths = [
+        str(Path(path).resolve())
+        for path in file_paths
+    ]
+
+    common_root = os.path.commonpath(file_paths)
+
+    if os.path.isfile(common_root):
+        common_root = os.path.dirname(common_root)
+
+    module_map = {}
+
+    # ========================================================
+    # STEP 1 — ADD MODULE NODES
+    # ========================================================
+
+    for file_path in file_paths:
+
+        relative_path = os.path.relpath(
+            file_path,
+            common_root
+        )
+
+        module_name = relative_path.replace(
+            os.sep,
+            "."
+        )
+
+        if module_name.endswith(".py"):
+            module_name = module_name[:-3]
+
+        if module_name.endswith(".__init__"):
+            module_name = module_name[:-9]
+
+        module_map[module_name] = file_path
+
+        G.add_node(
+            file_path,
+            label=Path(file_path).stem,
+            type="module"
+        )
+
+    # ========================================================
+    # STEP 2 — IDENTIFY IMPORT DEPENDENCIES
+    # ========================================================
+
+    for file_path in file_paths:
+
+        try:
+
+            tree = get_ast_tree(file_path)
+
+            for node in ast.walk(tree):
+
+                imported_modules = []
+
+                if isinstance(node, ast.Import):
+
+                    imported_modules = [
+                        alias.name
+                        for alias in node.names
+                    ]
+
+                elif isinstance(node, ast.ImportFrom):
+
+                    if node.module:
+
+                        imported_modules = [
+                            node.module
+                        ]
+
+                # Match imports with repository modules
+                for imported in imported_modules:
+
+                    for module_name, target_path in module_map.items():
+
+                        if (
+                            imported == module_name
+                            or imported.startswith(
+                                module_name + "."
+                            )
+                        ):
+
+                            if file_path != target_path:
+
+                                G.add_edge(
+                                    file_path,
+                                    target_path,
+                                    relationship="imports"
+                                )
+
+        except Exception as e:
+
+            print(
+                f"Could not analyze dependencies in {file_path}: {e}"
+            )
+
+    return G

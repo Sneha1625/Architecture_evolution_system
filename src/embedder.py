@@ -8,7 +8,14 @@ import json
 import math
 
 # Load model once (downloads ~80MB on first run)
-model = SentenceTransformer("all-MiniLM-L6-v2")
+from pathlib import Path
+
+MODEL_PATH = Path(__file__).resolve().parent.parent / "local_model"
+
+model = SentenceTransformer(
+    str(MODEL_PATH),
+    local_files_only=True
+)
 
 
 def get_code_embedding(text):

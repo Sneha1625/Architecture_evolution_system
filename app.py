@@ -44,7 +44,11 @@ import plotly.graph_objects as go
 from git import Repo
 from dotenv import load_dotenv
 
-from src.dependency import build_dependency_graph, draw_dependency_graph
+from src.dependency import (
+    build_dependency_graph,
+    draw_dependency_graph,
+    build_combined_dependency_graph,
+)
 
 from database.repository import (
     save_repository,
@@ -660,468 +664,53 @@ def parse_uploaded_files():
 
 
 # ============================================================
-# DEPENDENCY GRAPH
+# CLEAN UP TEMPORARY FILES
 # ============================================================
 
-# ============================================================
-# PAGE 6 — DEPENDENCY ANALYSIS
-# ============================================================
+def cleanup_temp_files(file_paths):
+    """
+    Safely handle cleanup of temporary uploaded files.
 
-if page == "🔗 Dependency Analysis":
+    Repository files must never be deleted.
+    """
+    from pathlib import Path
+    import tempfile
 
-    require_uploaded_files()
+    temp_directory = Path(tempfile.gettempdir()).resolve()
 
-    st.header(
-        "🔗 Dependency Analysis"
-    )
-
-    st.write(
-        """
-        Analyze software dependencies without combining every
-        function from the entire repository into one graph.
-
-        The system first shows a clean **module-level architecture**.
-        You can then select an individual Python file to inspect its
-        function and method dependencies.
-        """
-    )
-
-    # ========================================================
-    # STEP 1 — MODULE LEVEL
-    # ========================================================
-
-    st.subheader(
-        "1️⃣ Repository Module Dependencies"
-    )
-
-    st.caption(
-        "Each Python file is represented as one module. "
-        "This view is designed for large GitHub repositories."
-    )
-
-    if not file_paths:
-
-        st.warning(
-            "No Python files were found."
+    repository_files = {
+        str(Path(path).resolve())
+        for path in st.session_state.get(
+            "repository_file_paths", []
         )
+    }
 
-    else:
+    for file_path in file_paths:
 
-        if st.button(
-            "🏗️ Generate Module Dependency Graph",
-            type="primary",
-        ):
+        try:
+            path = Path(file_path).resolve()
 
-            G_module = build_combined_dependency_graph(
-                file_paths
+            # Never delete original repository files
+            if str(path) in repository_files:
+                continue
+
+            # Only consider files inside temporary directory
+            if not path.is_relative_to(temp_directory):
+                continue
+
+            # Temporarily disable deletion until we verify
+            # how create_temp_files() creates uploaded files.
+            # path.unlink()
+
+        except Exception as e:
+            st.warning(
+                f"Could not clean up temporary file: {e}"
             )
 
-            if G_module.number_of_nodes() == 0:
-
-                st.warning(
-                    "No module dependencies detected."
-                )
-
-            else:
-
-                # --------------------------------------------
-                # CLEAN MODULE GRAPH
-                # --------------------------------------------
-
-                pos = nx.spring_layout(
-                    G_module,
-                    seed=42,
-                    k=2.5,
-                    iterations=200,
-                )
-
-                edge_x = []
-                edge_y = []
-
-                for source, target in G_module.edges():
-
-                    if (
-                        source not in pos
-                        or target not in pos
-                    ):
-                        continue
-
-                    x0, y0 = pos[source]
-                    x1, y1 = pos[target]
-
-                    edge_x.extend(
-                        [x0, x1, None]
-                    )
-
-                    edge_y.extend(
-                        [y0, y1, None]
-                    )
-
-                edge_trace = go.Scatter(
-                    x=edge_x,
-                    y=edge_y,
-                    mode="lines",
-                    line=dict(
-                        width=1.5
-                    ),
-                    hoverinfo="none",
-                )
-
-                node_x = []
-                node_y = []
-                node_text = []
-                node_hover = []
-
-                for node in G_module.nodes():
-
-                    x, y = pos[node]
-
-                    node_x.append(x)
-                    node_y.append(y)
-
-                    label = G_module.nodes[
-                        node
-                    ].get(
-                        "label",
-                        Path(node).stem,
-                    )
-
-                    node_text.append(
-                        label
-                    )
-
-                    node_hover.append(
-                        f"<b>{label}</b><br>"
-                        f"Path: {node}<br>"
-                        f"Dependencies: "
-                        f"{G_module.degree(node)}"
-                    )
-
-                node_trace = go.Scatter(
-                    x=node_x,
-                    y=node_y,
-                    mode="markers+text",
-                    text=node_text,
-                    textposition="top center",
-                    hovertext=node_hover,
-                    hoverinfo="text",
-                    marker=dict(
-                        size=30,
-                        line=dict(
-                            width=2
-                        ),
-                    ),
-                )
-
-                fig = go.Figure(
-                    data=[
-                        edge_trace,
-                        node_trace,
-                    ]
-                )
-
-                fig.update_layout(
-                    title={
-                        "text":
-                            "🏗️ Repository Module Dependency Architecture",
-                        "x": 0.5,
-                        "xanchor": "center",
-                    },
-                    showlegend=False,
-                    height=700,
-                    hovermode="closest",
-                    margin=dict(
-                        b=20,
-                        l=20,
-                        r=20,
-                        t=80,
-                    ),
-                    xaxis=dict(
-                        showgrid=False,
-                        zeroline=False,
-                        showticklabels=False,
-                    ),
-                    yaxis=dict(
-                        showgrid=False,
-                        zeroline=False,
-                        showticklabels=False,
-                    ),
-                )
-
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                )
-
-                c1, c2, c3 = st.columns(3)
-
-                c1.metric(
-                    "Modules",
-                    G_module.number_of_nodes(),
-                )
-
-                c2.metric(
-                    "Module Dependencies",
-                    G_module.number_of_edges(),
-                )
-
-                c3.metric(
-                    "Graph Density",
-                    f"{nx.density(G_module):.3f}",
-                )
-
-    st.divider()
-
-    # ========================================================
-    # STEP 2 — SELECT ONE FILE
-    # ========================================================
-
-    st.subheader(
-        "2️⃣ Inspect Individual File"
-    )
-
-    st.caption(
-        "Select one Python file to see only its internal "
-        "function and method dependencies."
-    )
-
-    if not file_paths:
-
-        st.warning(
-            "No Python files available."
-        )
-
-    else:
-
-        selected_file = st.selectbox(
-            "Select a Python file",
-            file_paths,
-            format_func=lambda path:
-                get_relative_file_name(path),
-            key="dependency_selected_file",
-        )
-
-        if st.button(
-            "🔍 Analyze Selected File",
-            type="primary",
-        ):
-
-            try:
-
-                G_file = build_dependency_graph(
-                    selected_file
-                )
-
-                st.markdown(
-                    f"### 📄 {get_relative_file_name(selected_file)}"
-                )
-
-                if G_file.number_of_nodes() == 0:
-
-                    st.info(
-                        "No functions, classes or internal "
-                        "dependencies were detected in this file."
-                    )
-
-                else:
-
-                    # ----------------------------------------
-                    # FILE GRAPH
-                    # ----------------------------------------
-
-                    pos = nx.spring_layout(
-                        G_file,
-                        seed=42,
-                        k=2.5,
-                        iterations=200,
-                    )
-
-                    edge_x = []
-                    edge_y = []
-
-                    for source, target in G_file.edges():
-
-                        x0, y0 = pos[source]
-                        x1, y1 = pos[target]
-
-                        edge_x.extend(
-                            [x0, x1, None]
-                        )
-
-                        edge_y.extend(
-                            [y0, y1, None]
-                        )
-
-                    edge_trace = go.Scatter(
-                        x=edge_x,
-                        y=edge_y,
-                        mode="lines",
-                        line=dict(
-                            width=1.5
-                        ),
-                        hoverinfo="none",
-                    )
-
-                    node_x = []
-                    node_y = []
-                    node_text = []
-                    node_hover = []
-
-                    for node in G_file.nodes():
-
-                        x, y = pos[node]
-
-                        node_x.append(x)
-                        node_y.append(y)
-
-                        node_type = (
-                            G_file.nodes[
-                                node
-                            ].get(
-                                "type",
-                                "function",
-                            )
-                        )
-
-                        node_text.append(
-                            str(node)
-                        )
-
-                        node_hover.append(
-                            f"<b>{node}</b><br>"
-                            f"Type: {node_type}<br>"
-                            f"Connections: "
-                            f"{G_file.degree(node)}"
-                        )
-
-                    node_trace = go.Scatter(
-                        x=node_x,
-                        y=node_y,
-                        mode="markers+text",
-                        text=node_text,
-                        textposition="top center",
-                        hovertext=node_hover,
-                        hoverinfo="text",
-                        marker=dict(
-                            size=28,
-                            line=dict(
-                                width=2
-                            ),
-                        ),
-                    )
-
-                    fig = go.Figure(
-                        data=[
-                            edge_trace,
-                            node_trace,
-                        ]
-                    )
-
-                    fig.update_layout(
-                        title={
-                            "text":
-                                "🔗 Internal Function & Method Dependencies",
-                            "x": 0.5,
-                            "xanchor": "center",
-                        },
-                        showlegend=False,
-                        height=650,
-                        hovermode="closest",
-                        margin=dict(
-                            b=20,
-                            l=20,
-                            r=20,
-                            t=80,
-                        ),
-                        xaxis=dict(
-                            showgrid=False,
-                            zeroline=False,
-                            showticklabels=False,
-                        ),
-                        yaxis=dict(
-                            showgrid=False,
-                            zeroline=False,
-                            showticklabels=False,
-                        ),
-                    )
-
-                    st.plotly_chart(
-                        fig,
-                        use_container_width=True,
-                    )
-
-                    # ----------------------------------------
-                    # METRICS
-                    # ----------------------------------------
-
-                    c1, c2, c3 = st.columns(3)
-
-                    c1.metric(
-                        "Functions / Classes",
-                        G_file.number_of_nodes(),
-                    )
-
-                    c2.metric(
-                        "Internal Calls",
-                        G_file.number_of_edges(),
-                    )
-
-                    c3.metric(
-                        "Density",
-                        f"{nx.density(G_file):.3f}",
-                    )
-
-                    # ----------------------------------------
-                    # DEPENDENCY TABLE
-                    # ----------------------------------------
-
-                    st.markdown(
-                        "### 📋 Detected Internal Dependencies"
-                    )
-
-                    dependency_rows = []
-
-                    for source, target in G_file.edges():
-
-                        dependency_rows.append(
-                            {
-                                "Source":
-                                    source,
-
-                                "Depends On":
-                                    target,
-
-                                "Relationship":
-                                    "Function / Method Call",
-                            }
-                        )
-
-                    if dependency_rows:
-
-                        st.dataframe(
-                            dependency_rows,
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-
-                    else:
-
-                        st.info(
-                            "No internal function calls detected."
-                        )
-
-            except Exception as e:
-
-                st.error(
-                    f"Dependency analysis failed: {e}"
-                )
-
-                st.exception(e)
 
 # ============================================================
 # ARCHITECTURE GRAPH
 # ============================================================
-
 
 def create_architecture_graph(G, key="architecture_graph"):
 
@@ -1143,7 +732,6 @@ def create_architecture_graph(G, key="architecture_graph"):
         key=lambda n: G.degree(n),
         reverse=True,
     )
-
     # ========================================================
     # STABLE LAYOUT
     # ========================================================
