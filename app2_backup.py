@@ -1595,48 +1595,124 @@ def show_snapshot_comparison():
     st.divider()
 
     st.subheader(
-        "Evolution Summary"
+        "Architecture Evolution Analysis"
     )
 
-    component_changes = (
+    before_component_count = (
+        len(unchanged_components)
+        + len(added_components)
+    )
+
+    after_component_count = (
+        len(unchanged_components)
+        + len(added_components)
+    )
+
+    before_relationship_count = (
+        len(unchanged_relationships)
+        + len(added_relationships)
+    )
+
+    after_relationship_count = (
+        len(unchanged_relationships)
+        + len(added_relationships)
+    )
+
+    component_delta = (
         len(added_components)
-        + len(removed_components)
+        - len(removed_components)
     )
 
-    relationship_changes = (
+    relationship_delta = (
         len(added_relationships)
-        + len(removed_relationships)
+        - len(removed_relationships)
     )
+
+    st.markdown("### Before ? After")
 
     col1, col2 = st.columns(2)
 
     with col1:
-
         st.metric(
-            "Component Changes",
-            component_changes,
+            "Components",
+            after_component_count,
+            delta=component_delta,
         )
 
     with col2:
-
         st.metric(
-            "Relationship Changes",
-            relationship_changes,
+            "Relationships",
+            after_relationship_count,
+            delta=relationship_delta,
         )
+
+    st.markdown("### Improvements")
+
+    improvements = []
+
+    if added_components:
+        improvements.append(
+            f"{len(added_components)} component(s) added"
+        )
+
+    if added_relationships:
+        improvements.append(
+            f"{len(added_relationships)} relationship(s) added"
+        )
+
+    if not removed_components and not removed_relationships:
+        improvements.append(
+            "No components or relationships were removed"
+        )
+
+    if improvements:
+        for improvement in improvements:
+            st.success(f"? {improvement}")
+    else:
+        st.info("No clear architectural improvements detected.")
+
+    st.markdown("### Changes Detected")
+
+    if added_components:
+        for component in added_components:
+            st.write(f"+ Component added: **{component}**")
+
+    if removed_components:
+        for component in removed_components:
+            st.write(f"- Component removed: **{component}**")
+
+    if added_relationships:
+        for source, target, relationship_type in added_relationships:
+            relationship_text = (
+                relationship_type
+                if relationship_type
+                else "relationship"
+            )
+            st.write(
+                f"+ Relationship added: **{source}** ? "
+                f"**{target}** ({relationship_text})"
+            )
+
+    if removed_relationships:
+        for source, target, relationship_type in removed_relationships:
+            relationship_text = (
+                relationship_type
+                if relationship_type
+                else "relationship"
+            )
+            st.write(
+                f"- Relationship removed: **{source}** ? "
+                f"**{target}** ({relationship_text})"
+            )
 
     if (
-        component_changes == 0
-        and relationship_changes == 0
+        not added_components
+        and not removed_components
+        and not added_relationships
+        and not removed_relationships
     ):
-
-        st.success(
-            "No architectural changes detected."
-        )
-
-    else:
-
         st.info(
-            "Architectural changes were detected."
+            "No architectural changes detected between the selected snapshots."
         )
 
 
