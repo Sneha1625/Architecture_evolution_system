@@ -727,6 +727,57 @@ def display_architecture_size(
 # COMPARISON DISPLAY
 # ============================================================
 
+
+def display_improvements(comparison: Dict[str, Any]):
+    """Display measured improvements and recommendations."""
+
+    analysis = comparison.get("improvements", {})
+    if not isinstance(analysis, dict):
+        analysis = {}
+
+    st.markdown("### Improvements & Recommendations")
+    st.caption(
+        "Measured improvements are based on dependency changes "
+        "in components present in both snapshots."
+    )
+
+    improvements = analysis.get("improvements", [])
+    regressions = analysis.get("regressions", [])
+    recommendations = analysis.get("recommendations", [])
+
+    st.write(
+        f"Components compared: {analysis.get('components_compared', 0)}"
+    )
+
+    if improvements:
+        st.markdown("#### Improvements detected")
+        for item in improvements:
+            st.success(item.get("explanation", "Dependency reduction detected."))
+            st.caption(
+                f"{item.get('component', 'Component')}: "
+                f"{item.get('before', '?')} ? {item.get('after', '?')} dependencies"
+            )
+    else:
+        st.info("No verified dependency reduction was detected.")
+
+    if regressions:
+        st.markdown("#### Potential regressions")
+        for item in regressions:
+            st.warning(item.get("explanation", "Dependency increase detected."))
+
+    if recommendations:
+        st.markdown("#### Recommended actions")
+        for item in recommendations:
+            st.write(
+                f"- **{item.get('priority', 'Info')} ? "
+                f"{item.get('component', 'Architecture')}:** "
+                f"{item.get('recommendation', '')}"
+            )
+
+    if not improvements and not regressions and not recommendations:
+        st.info("Not enough matching component data for recommendations.")
+
+
 def display_comparison(
     comparison: Dict[str, Any]
 ):
@@ -880,6 +931,13 @@ def display_comparison(
                     value
                 )
 
+    st.markdown("---")
+
+    # --------------------------------------------------------
+    # Improvements and recommendations
+    # --------------------------------------------------------
+
+    display_improvements(comparison)
     st.markdown("---")
 
     # --------------------------------------------------------

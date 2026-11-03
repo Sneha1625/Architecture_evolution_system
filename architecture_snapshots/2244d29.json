@@ -1,0 +1,247 @@
+{
+    "version": "1.0",
+    "commit_hash": "2244d29",
+    "components": [
+        {
+            "id": "component_architecture_modeling_system",
+            "name": "Architecture Modeling System",
+            "responsibility": "Architecture Modeling System related functionality",
+            "layer": "module",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app2.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app2_backup.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app2_backup_current.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app2_before_changes.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app2_before_repo_input.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app3.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app3_backup_current.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_before_comparison_ui_upgrade.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_before_dependency_fix.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_before_navigation_fix.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_before_snapshot_compare_upgrade.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_before_snapshot_comparison.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_combined.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_combined_before_evolution_fix.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\app_combined_before_snapshot_fix.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\migrate_database.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\repository_test.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\sample_project.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\schema_check.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\test_architecture_model.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\test_architecture_recovery.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\test_coupling.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\test_dep.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\test_env.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\test_github_evolution.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\database\\__init__.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\database\\db.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\database\\repository.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\database\\schema.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\database\\test_repository.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\repository\\__init__.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\repository\\loader.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\import_real_version_snapshots.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\runtime_test_analyzer.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\runtime_test_parser.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_architecture_history.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_architecture_history_engine.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_history_integration.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_history_manager.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_multilanguage_recovery.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_real_history_pipeline.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_real_runtime.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_runtime_analyzer.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_runtime_comparator.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_runtime_evolution.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\tests\\test_runtime_persistence.py"
+            ],
+            "dependencies": [
+                "component_dependency",
+                "component_parser",
+                "component_analyzer",
+                "component_architect",
+                "component_embedder",
+                "component_features",
+                "component_architecture_model"
+            ]
+        },
+        {
+            "id": "component_architecture_model",
+            "name": "Architecture Model",
+            "responsibility": "Architecture Model related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\__init__.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\ai_analyzer.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\architecture_comparison.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\architecture_comparison_before_improvements.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\architecture_history_engine.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\git_history.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\github_evolution_pipeline.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\historical_recovery.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\history_manager.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\history_model.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\metrics.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\model.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\recovery.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\recovery_before_js_ts.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\runtime_analyzer.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\runtime_comparator.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\runtime_evolution.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\runtime_model.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\runtime_version_runner.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\architecture_model\\snapshot_loader.py"
+            ],
+            "dependencies": [
+                "component_architecture_modeling_system",
+                "component_parser"
+            ]
+        },
+        {
+            "id": "component_features",
+            "name": "Features",
+            "responsibility": "Features related functionality",
+            "layer": "module",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\ai_analysis.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\architecture_history.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\architecture_history_before_improvements.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\community_detector.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\coupling_miner.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\crossmoduleanalyser.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\impact_predictor.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\risk_predictor.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\runtime_application.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\runtime_architecture.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\runtime_mapping.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\runtime_pipeline.py",
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\features\\techdebt.py"
+            ],
+            "dependencies": [
+                "component_architecture_model",
+                "component_architecture_modeling_system",
+                "component_parser"
+            ]
+        },
+        {
+            "id": "component_analyzer",
+            "name": "Analyzer",
+            "responsibility": "Analyzer related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\src\\analyzer.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_architect",
+            "name": "Architect",
+            "responsibility": "Architect related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\src\\architect.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_dependency",
+            "name": "Dependency",
+            "responsibility": "Dependency related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\src\\dependency.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_embedder",
+            "name": "Embedder",
+            "responsibility": "Embedder related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\src\\embedder.py"
+            ],
+            "dependencies": []
+        },
+        {
+            "id": "component_parser",
+            "name": "Parser",
+            "responsibility": "Parser related functionality",
+            "layer": "core",
+            "files": [
+                "C:\\Users\\HP\\OneDrive\\Desktop\\Architecture_evolution_system\\src\\parser.py"
+            ],
+            "dependencies": []
+        }
+    ],
+    "relationships": [
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_dependency",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_parser",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_analyzer",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_architect",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_embedder",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_features",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_modeling_system",
+            "target": "component_architecture_model",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_model",
+            "target": "component_architecture_modeling_system",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_architecture_model",
+            "target": "component_parser",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_architecture_model",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_architecture_modeling_system",
+            "type": "depends_on"
+        },
+        {
+            "source": "component_features",
+            "target": "component_parser",
+            "type": "depends_on"
+        }
+    ],
+    "metrics": {
+        "total_components": 8,
+        "total_relationships": 12,
+        "total_files": 85
+    },
+    "violations": [],
+    "timestamp": "2026-11-03T19:25:22.914787"
+}

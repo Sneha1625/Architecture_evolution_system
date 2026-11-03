@@ -428,6 +428,99 @@ def compare_architecture_size(
 # COMPLETE SNAPSHOT COMPARISON
 # ============================================================
 
+
+def analyze_architecture_improvements(old_snapshot, new_snapshot):
+    """
+    Compare dependency changes among components present in both snapshots.
+    Removed components alone are never counted as improvements.
+    """
+
+    old_map = _component_map(old_snapshot)
+    new_map = _component_map(new_snapshot)
+
+    shared_ids = set(old_map) & set(new_map)
+
+    improvements = []
+    regressions = []
+    recommendations = []
+
+    for component_id in sorted(shared_ids):
+        old_component = old_map[component_id]
+        new_component = new_map[component_id]
+
+        old_dependencies = len(set(old_component.dependencies or []))
+        new_dependencies = len(set(new_component.dependencies or []))
+
+        difference = old_dependencies - new_dependencies
+
+        if difference > 0:
+            improvements.append({
+                "type": "Reduced dependencies",
+                "component": new_component.name,
+                "component_id": component_id,
+                "before": old_dependencies,
+                "after": new_dependencies,
+                "change": -difference,
+                "explanation": (
+                    f"{new_component.name} has {difference} fewer "
+                    "dependencies than before."
+                )
+            })
+
+        elif difference < 0:
+            regressions.append({
+                "type": "Increased dependencies",
+                "component": new_component.name,
+                "component_id": component_id,
+                "before": old_dependencies,
+                "after": new_dependencies,
+                "change": abs(difference),
+                "explanation": (
+                    f"{new_component.name} now has "
+                    f"{abs(difference)} additional dependencies."
+                )
+            })
+
+        if new_dependencies >= 4:
+            recommendations.append({
+                "priority": "Medium",
+                "component": new_component.name,
+                "recommendation": (
+                    f"Review the {new_dependencies} dependencies of "
+                    f"{new_component.name}. Consider separating "
+                    "responsibilities or introducing clearer interfaces."
+                )
+            })
+
+    if not shared_ids:
+        recommendations.append({
+            "priority": "Info",
+            "component": "Architecture",
+            "recommendation": (
+                "There are no matching components between these snapshots. "
+                "A dependency improvement comparison cannot be established."
+            )
+        })
+
+    if not improvements and shared_ids:
+        recommendations.append({
+            "priority": "Info",
+            "component": "Architecture",
+            "recommendation": (
+                "No reduction in dependencies was detected among matching "
+                "components. Review component responsibilities and "
+                "dependency boundaries for possible improvements."
+            )
+        })
+
+    return {
+        "improvements": improvements,
+        "regressions": regressions,
+        "recommendations": recommendations,
+        "components_compared": len(shared_ids)
+    }
+
+
 def compare_snapshots(
     old_snapshot,
     new_snapshot
@@ -487,7 +580,13 @@ def compare_snapshots(
         + len(metric_changes)
     )
 
+    improvement_analysis = analyze_architecture_improvements(
+        old_snapshot,
+        new_snapshot
+    )
+
     return {
+        "improvements": improvement_analysis,
         "old_version": old_snapshot.version,
         "new_version": new_snapshot.version,
 

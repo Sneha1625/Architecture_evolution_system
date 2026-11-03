@@ -1,4 +1,4 @@
-import os
+﻿import os
 from typing import List, Dict, Any
 
 from architecture_model.model import (
@@ -257,67 +257,108 @@ def build_relationships(
     parsed_results: List[Dict[str, Any]]
 ) -> List[Relationship]:
     """
-    Build component-level relationships from actual Python imports.
-
-    Example:
-
-        analyzer.py
-            imports parser
-                ↓
-        Analyzer → Parser
+    Build component-level relationships from Python,
+    JavaScript, and TypeScript imports.
     """
 
     relationships = []
-
-    # --------------------------------------------------
-    # Map every parsed file to its component
-    # --------------------------------------------------
+    existing = set()
 
     file_to_component = {}
 
     for component in components:
         for file_path in component.files:
-
-            normalized = os.path.normpath(
-                file_path
-            ).lower()
-
+            normalized = os.path.normcase(
+                os.path.normpath(file_path)
+            )
             file_to_component[normalized] = component.id
 
-            # Also store absolute path
-            absolute = os.path.normpath(
-                os.path.abspath(file_path)
-            ).lower()
+    def get_component(file_path):
+        normalized = os.path.normcase(
+            os.path.normpath(file_path)
+        )
+        return file_to_component.get(normalized)
 
-            file_to_component[absolute] = component.id
+    # Index project files for resolving relative imports.
+    project_files = []
 
-    # --------------------------------------------------
-    # Map Python module names to components
-    # --------------------------------------------------
+    for result in parsed_results:
+        path = (
+            result.get("file")
+            or result.get("file_path")
+            or result.get("path")
+            or ""
+        )
 
+        if path:
+            project_files.append(path)
+
+    def resolve_relative_import(source_file, imported):
+        import re
+
+        match = re.search(
+            r"""from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]""",
+            imported
+        )
+
+        if not match:
+            return None
+
+        import_path = match.group(1) or match.group(2)
+
+        if not import_path.startswith("."):
+            return None
+
+        source_directory = os.path.dirname(source_file)
+
+        target_base = os.path.normpath(
+            os.path.join(source_directory, import_path)
+        )
+
+        extensions = [
+            "",
+            ".js", ".jsx", ".mjs", ".cjs",
+            ".ts", ".tsx"
+        ]
+
+        candidates = []
+
+        for extension in extensions:
+            candidates.append(target_base + extension)
+
+        for extension in [".js", ".jsx", ".ts", ".tsx"]:
+            candidates.append(
+                os.path.join(target_base, "index" + extension)
+            )
+
+        normalized_project_files = {
+            os.path.normcase(os.path.normpath(path)): path
+            for path in project_files
+        }
+
+        for candidate in candidates:
+            key = os.path.normcase(
+                os.path.normpath(candidate)
+            )
+
+            if key in normalized_project_files:
+                return normalized_project_files[key]
+
+        return None
+
+    # Index Python module names.
     module_to_component = {}
 
     for component in components:
-
         for file_path in component.files:
-
             filename = os.path.basename(file_path)
 
-            if not filename.endswith(".py"):
-                continue
-
-            module_name = filename[:-3].lower()
-
-            module_to_component[
-                module_name
-            ] = component.id
-
-    # --------------------------------------------------
-    # Examine imports
-    # --------------------------------------------------
+            if filename.endswith(".py"):
+                module_to_component[
+                    filename[:-3].lower()
+                ] = component.id
 
     for result in parsed_results:
-
         source_file = (
             result.get("file")
             or result.get("file_path")
@@ -328,127 +369,76 @@ def build_relationships(
         if not source_file:
             continue
 
-        source_normalized = os.path.normpath(
-            source_file
-        ).lower()
-
-        source_component = file_to_component.get(
-            source_normalized
-        )
-
-        if not source_component:
-            source_component = file_to_component.get(
-                os.path.normpath(
-                    os.path.abspath(source_file)
-                ).lower()
-            )
+        source_component = get_component(source_file)
 
         if not source_component:
             continue
 
-        imports = result.get(
-            "imports",
-            []
-        )
+        language = (
+    result.get("language")
+    or ("python" if source_file.lower().endswith(".py") else "")
+).lower()
 
-        for imported in imports:
-
+        for imported in result.get("imports", []):
             if not imported:
                 continue
 
             imported = str(imported).strip()
-
-            # Example:
-            #
-            # from src.parser import parse_file
-            #
-            # becomes:
-            #
-            # src.parser
-            #
-            module_parts = imported.lower().split(".")
-
             target_component = None
 
-            # Try complete module name first
-            for length in range(
-                len(module_parts),
-                0,
-                -1
-            ):
-
-                candidate = ".".join(
-                    module_parts[:length]
+            if language in ("javascript", "typescript", "tsx"):
+                target_file = resolve_relative_import(
+                    source_file,
+                    imported
                 )
 
-                if candidate in module_to_component:
+                if target_file:
+                    target_component = get_component(target_file)
 
-                    target_component = (
-                        module_to_component[candidate]
+            elif language == "python":
+                module_parts = imported.lower().split(".")
+
+                for length in range(len(module_parts), 0, -1):
+                    candidate = ".".join(module_parts[:length])
+
+                    if candidate in module_to_component:
+                        target_component = module_to_component[candidate]
+                        break
+
+                if not target_component:
+                    target_component = module_to_component.get(
+                        module_parts[-1]
                     )
 
-                    break
-
-            # Try the final module name
-            if not target_component:
-
-                final_module = module_parts[-1]
-
-                target_component = (
-                    module_to_component.get(
-                        final_module
-                    )
-                )
-
-            # Ignore external libraries and self-dependencies
             if (
                 target_component
                 and target_component != source_component
             ):
-
-                relationship = Relationship(
-                    source=source_component,
-                    target=target_component,
-                    type="depends_on"
-                )
-
                 key = (
-                    relationship.source,
-                    relationship.target,
-                    relationship.type
+                    source_component,
+                    target_component,
+                    "depends_on"
                 )
-
-                existing = {
-                    (
-                        r.source,
-                        r.target,
-                        r.type
-                    )
-                    for r in relationships
-                }
 
                 if key not in existing:
-
                     relationships.append(
-                        relationship
+                        Relationship(
+                            source=source_component,
+                            target=target_component,
+                            type="depends_on"
+                        )
                     )
 
-                    # Update component dependency list
+                    existing.add(key)
+
                     for component in components:
-
                         if component.id == source_component:
-
-                            if (
-                                target_component
-                                not in component.dependencies
-                            ):
-
+                            if target_component not in component.dependencies:
                                 component.dependencies.append(
                                     target_component
                                 )
 
     return relationships
-
 def recover_architecture(
     parsed_results: List[Dict[str, Any]],
     commit_hash: str = "unknown"
@@ -485,3 +475,4 @@ def recover_architecture(
     )
 
     return snapshot
+

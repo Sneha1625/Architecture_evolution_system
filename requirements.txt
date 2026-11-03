@@ -9,3 +9,4 @@ scikit-learn
 GitPython
 python-louvain
 pytest
+tree-sitter-language-pack
