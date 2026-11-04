@@ -70,6 +70,17 @@ def _apply_shared_repository(url, local_path):
     st.session_state.pop("github_evolution_results_url", None)
     st.session_state.pop("evolution_selected_commit", None)
     st.session_state.pop("evolution_selected_commit_label", None)
+    for selection_key in (
+        "relationship_snapshot",
+        "graph_snapshot",
+        "comparison_before",
+        "comparison_after",
+        "architecture_history_snapshot",
+        "architecture_history_old",
+        "architecture_history_new",
+        "combined_commit_label",
+    ):
+        st.session_state.pop(selection_key, None)
     return len(source_files)
 
 
