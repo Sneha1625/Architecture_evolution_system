@@ -13,7 +13,7 @@ from architecture_model.runtime_evolution import (
     compare_runtime_architectures,
     get_runtime_evolution_summary,
 )
-from architecture_model.runtime_version_runner import run_version_pair
+from architecture_model.runtime_version_runner import (\n    list_repository_commits,\n    run_version_pair,\n)
 from features.runtime_mapping import build_runtime_component_map
 
 
@@ -22,7 +22,7 @@ from features.runtime_mapping import build_runtime_component_map
 # ============================================================
 
 
-def _render_runtime_evolution():
+def _render_runtime_evolution(repository_path):
     """
     Run the same runtime scenario against V1 and V2 and display
     runtime evolution information and charts.
@@ -35,31 +35,63 @@ def _render_runtime_evolution():
     )
 
     st.caption(
-        "Run the same scenario against the V1 and V2 Git worktrees, "
-        "then compare observed modules, relationships, call counts, "
-        "and functions."
+        "Choose any two commits from the repository selected in app_combined. "
+        "The comparison below will use only those exact commits."
     )
 
-    # --------------------------------------------------------
-    # RUN COMPARISON
-    # --------------------------------------------------------
-
-    if not st.button(
-        "Run V1 vs V2 Runtime Comparison",
-        key="run_runtime_evolution",
-    ):
-        st.info(
-            "Click the button above to execute and compare both versions."
-        )
+    try:
+        commits = list_repository_commits(repository_path)
+    except Exception as error:
+        st.error(f"Could not load commits from the selected repository: {error}")
         return
 
-    with st.spinner(
-        "Executing the runtime scenario against V1 and V2..."
-    ):
+    if len(commits) < 2:
+        st.warning("At least two Git commits are required for runtime comparison.")
+        return
 
+    commit_by_sha = {item["sha"]: item for item in commits}
+    commit_options = [item["sha"] for item in commits]
+
+    def commit_label(sha):
+        item = commit_by_sha[sha]
+        return f'{item["short_sha"]} · {item["message"][:90]} · {item["date"][:10]}'
+
+    with st.form("runtime_commit_selection"):
+        st.markdown("#### Select the two commits to compare")
+        col1, col2 = st.columns(2)
+        with col1:
+            v1_commit = st.selectbox(
+                "Version 1 (older or baseline)",
+                options=commit_options,
+                index=min(1, len(commit_options) - 1),
+                format_func=commit_label,
+                key="runtime_v1_selected_commit",
+            )
+        with col2:
+            v2_commit = st.selectbox(
+                "Version 2 (newer or target)",
+                options=commit_options,
+                index=0,
+                format_func=commit_label,
+                key="runtime_v2_selected_commit",
+            )
+        run_comparison = st.form_submit_button("Compare selected commits")
+
+    if not run_comparison:
+        st.info("Select two commits and click **Compare selected commits**.")
+        return
+
+    if v1_commit == v2_commit:
+        st.error("Please select two different commits.")
+        return
+
+    with st.spinner("Preparing the selected Git versions and tracing runtime execution..."):
         try:
-
-            versions = run_version_pair()
+            versions = run_version_pair(
+                repository_path=repository_path,
+                v1_commit=v1_commit,
+                v2_commit=v2_commit,
+            )
 
             comparison = compare_runtime_architectures(
                 versions["v1_runtime"],
@@ -681,7 +713,7 @@ def render_runtime_architecture(
         st.caption("Selected repository: " + str(repository_url or repository_path))
         _render_repository_architecture(repository_path)
         st.info("The repository overview above is static analysis. Python runtime evolution below executes a selected entry point from the two Git versions; non-Python languages remain static-analysis only.")
-        _render_runtime_evolution()
+        _render_runtime_evolution(repository_path)
         return
 
     # --------------------------------------------------------
