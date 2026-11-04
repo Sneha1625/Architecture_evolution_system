@@ -167,7 +167,9 @@ function post(method, params = {}) {
           if (child) visit(child, node);
         }
       }
-      for (const rootNode of profile.nodes.filter(n => !n.parent)) visit(rootNode, null);
+      const childIds = new Set();
+      for (const node of profile.nodes) for (const childId of node.children || []) childIds.add(childId);
+      for (const rootNode of profile.nodes.filter(n => !childIds.has(n.id))) visit(rootNode, null);
       require("fs").writeFileSync(output, JSON.stringify({
         calls, entry_point: path.relative(root, scenario),
         trace_kind: "v8_cpu_profile_samples",
@@ -206,10 +208,10 @@ def _run_node(root: Path, scenario: str, timeout: int) -> RuntimeArchitecture:
                 "configure a TypeScript loader for older Node.js releases."
             )
         node_args = ["--experimental-strip-types"]
-    elif suffix in {".mjs", ".js", ".cjs", ".jsx"}:
+    elif suffix in {".mjs", ".js", ".cjs"}:
         node_args = []
     else:
-        raise RuntimeError("The Node adapter cannot execute this scenario extension: " + suffix)
+        raise RuntimeError("The Node adapter cannot execute this scenario extension: " + suffix + ". JSX/TSX require a project-specific transpiler; provide a compiled .js/.mjs scenario.")
 
     with tempfile.TemporaryDirectory(prefix="architecture_node_profile_") as temp:
         runner = Path(temp) / "profile_runner.cjs"
