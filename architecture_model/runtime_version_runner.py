@@ -67,7 +67,8 @@ def discover_python_entrypoints(worktree_path):
             continue
         if path.name in preferred:
             files.append(relative.as_posix())
-    files.sort(key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))
+    preferred_order = {name: index for index, name in enumerate(preferred)}
+    files.sort(key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))
     return files[:200]
 
 # ============================================================
