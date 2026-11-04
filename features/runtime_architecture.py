@@ -650,6 +650,36 @@ def _render_repository_architecture(repository_path):
     else:
         st.info("No internal file-to-file import relationships were resolved. The parsed file and function inventory is still available below.")
 
+    # Restore the architecture dependency graph alongside the relationship table.
+    st.markdown("#### Architecture dependency graph")
+    graph_nodes = sorted(path_to_module)
+    def _dot_quote(value):
+        return str(value).replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\\n", " ")
+    dot_lines = ["digraph Architecture {", "  rankdir=LR;", '  graph [bgcolor="transparent"];', '  node [shape=box, style="rounded,filled", fillcolor="#E8F0FE", color="#5B78A6"];']
+    for node in graph_nodes:
+        dot_lines.append(f'  "{_dot_quote(node)}";')
+    for source_name, target_name, _kind in sorted(relationships):
+        dot_lines.append(f'  "{_dot_quote(source_name)}" -> "{_dot_quote(target_name)}";')
+    dot_lines.append("}")
+    try:
+        st.graphviz_chart("\\n".join(dot_lines), use_container_width=True)
+    except Exception as graph_error:
+        st.warning(f"Could not render the dependency graph: {graph_error}")
+
+    st.markdown("#### Dependencies")
+    dependency_rows = []
+    for item in parsed_files:
+        source_name = Path(item["file"]).resolve().relative_to(root).as_posix()
+        for imported in item.get("imports", []):
+            dependency_rows.append({
+                "Source file": source_name,
+                "Imported dependency": str(imported),
+            })
+    if dependency_rows:
+        st.dataframe(dependency_rows, use_container_width=True, hide_index=True)
+    else:
+        st.info("No imports or dependencies were detected.")
+
     with st.expander("Source file inventory", expanded=False):
         for item in sorted(parsed_files, key=lambda value: str(value.get("file", ""))):
             rel = Path(item["file"]).resolve().relative_to(root).as_posix()
