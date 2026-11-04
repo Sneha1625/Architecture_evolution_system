@@ -65,7 +65,8 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(marker in source for marker in server_markers):
             continue
-        files.append(relative.as_posix())
+        if path.name in preferred:
+            files.append(relative.as_posix())
     files.sort(key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))
     return files[:200]
 
