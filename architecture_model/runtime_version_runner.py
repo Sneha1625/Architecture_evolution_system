@@ -37,7 +37,27 @@ PARENT_DIR = PROJECT_ROOT.parent
 DEFAULT_V1_PATH = PARENT_DIR / "runtime_v1"
 DEFAULT_V2_PATH = PARENT_DIR / "runtime_v2"
 
-DEFAULT_SCENARIO = "test_architecture_recovery.py"
+DEFAULT_SCENARIO = ""
+
+
+def discover_python_entrypoints(worktree_path):
+    """Return likely executable Python entry points in a repository."""
+    root = Path(worktree_path).resolve()
+    preferred = ("main.py", "app.py", "run.py", "cli.py", "__main__.py", "manage.py")
+    ignored = {".git", ".venv", "venv", "env", "__pycache__", "site-packages", "node_modules", "tests", "test"}
+    files = []
+    for path in root.rglob("*.py"):
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        if any(part.lower() in ignored for part in relative.parts[:-1]):
+            continue
+        if path.name.startswith("test_"):
+            continue
+        files.append(relative.as_posix())
+    files.sort(key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))
+    return files[:200]
 
 
 # ============================================================
@@ -114,10 +134,10 @@ def profiler(frame, event, arg):
     callee_module = module_name(frame)
 
     # Filter module names before doing filesystem checks.
-    if not is_architecture_module(caller_module):
+    if not is_architecture_module(caller_module, caller.f_code.co_filename):
         return profiler
 
-    if not is_architecture_module(callee_module):
+    if not is_architecture_module(callee_module, frame.f_code.co_filename):
         return profiler
 
     if caller_module == callee_module:
