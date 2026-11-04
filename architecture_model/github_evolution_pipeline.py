@@ -363,6 +363,81 @@ def parse_commit(
 # 7. ANALYZE AND SAVE ONE COMMIT
 # ============================================================
 
+def _backfill_snapshot_relationships(snapshot_id: int, parsed_results: list[dict]) -> int:
+    """Repair relationship rows on older snapshots created before Java import recovery."""
+    from architecture_model.recovery import recover_architecture
+
+    recovered = recover_architecture(parsed_results)
+    if not recovered.relationships:
+        return 0
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        existing_rows = cursor.execute(
+            "SELECT source, target, relationship_type FROM relationships WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchall()
+        existing = {(row[0], row[1], row[2]) for row in existing_rows}
+
+        component_rows = cursor.execute(
+            "SELECT id, component_key FROM components WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchall()
+        component_ids = {row[1]: row[0] for row in component_rows if row[1]}
+
+        inserted = 0
+        for relationship in recovered.relationships:
+            key = (relationship.source, relationship.target, relationship.type)
+            if key in existing:
+                continue
+            if relationship.source not in component_ids or relationship.target not in component_ids:
+                continue
+            cursor.execute(
+                "INSERT INTO relationships (snapshot_id, source, target, relationship_type) VALUES (?, ?, ?, ?)",
+                (snapshot_id, relationship.source, relationship.target, relationship.type),
+            )
+            existing.add(key)
+            inserted += 1
+
+            source_id = component_ids[relationship.source]
+            dependency_exists = cursor.execute(
+                "SELECT 1 FROM component_dependencies WHERE component_id = ? AND dependency_component_key = ? LIMIT 1",
+                (source_id, relationship.target),
+            ).fetchone()
+            if not dependency_exists:
+                cursor.execute(
+                    "INSERT INTO component_dependencies (component_id, dependency_component_key) VALUES (?, ?)",
+                    (source_id, relationship.target),
+                )
+
+        metric_row = cursor.execute(
+            "SELECT id FROM architecture_metrics WHERE snapshot_id = ? AND metric_name = 'total_relationships' ORDER BY id DESC LIMIT 1",
+            (snapshot_id,),
+        ).fetchone()
+        total = cursor.execute(
+            "SELECT COUNT(*) FROM relationships WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()[0]
+        if metric_row:
+            cursor.execute(
+                "UPDATE architecture_metrics SET metric_value = ?, metric_data = NULL WHERE id = ?",
+                (total, metric_row[0]),
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO architecture_metrics (snapshot_id, metric_name, metric_value) VALUES (?, 'total_relationships', ?)",
+                (snapshot_id, total),
+            )
+        connection.commit()
+        return inserted
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def analyze_commit(
     repository_path: str,
     repository_url: str,
@@ -404,11 +479,19 @@ def analyze_commit(
     )
 
     if existing_snapshot is not None:
+        # Re-parse once so older snapshots can be repaired after adding a new
+        # language relationship resolver (notably Java package imports).
+        parsed_results = parse_commit(repo, resolved_commit)
+        relationships_added = _backfill_snapshot_relationships(
+            existing_snapshot,
+            parsed_results,
+        )
         return {
             "repository_id": repository_id,
             "snapshot_id": existing_snapshot,
             "commit_hash": resolved_commit,
             "created": False,
+            "relationships_backfilled": relationships_added,
         }
 
     parsed_results = parse_commit(
