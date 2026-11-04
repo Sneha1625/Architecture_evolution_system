@@ -93,3 +93,22 @@ def test_external_javascript_import_is_ignored():
     ]
 
     assert get_edges(results) == set()
+
+def test_java_package_import_creates_dependency_relationship():
+    results = [
+        make_file(
+            "src/main/java/com/example/controller/UserController.java",
+            "java",
+            ["import com.example.service.UserService;"]
+        ),
+        make_file(
+            "src/main/java/com/example/service/UserService.java",
+            "java",
+            []
+        ),
+    ]
+
+    assert (
+        "component_controller",
+        "component_service"
+    ) in get_edges(results)
