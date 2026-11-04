@@ -97,7 +97,7 @@ def _parse_jfr_json(payload: dict, root: Path) -> list[dict]:
             source_text = java_source.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        package_match = re.search(r"^\\s*package\\s+([\\w.]+)\\s*;", source_text, re.MULTILINE)
+        package_match = re.search(r"^\s*package\s+([\w.]+)\s*;", source_text, re.MULTILINE)
         if package_match:
             project_packages.add(package_match.group(1))
 
@@ -233,14 +233,15 @@ def execute_java_scenario(root: str | Path, scenario: str, timeout: int = BUILD_
 
     architecture = RuntimeArchitecture(entry_point=scenario)
     for item in calls:
-        architecture.add_call(RuntimeCall(
-            caller_module=item["caller_module"],
-            caller_function=item["caller_function"],
-            callee_module=item["callee_module"],
-            callee_function=item["callee_function"],
-            caller_file="",
-            callee_file="",
-        ))
+        for _ in range(item["samples"]):
+            architecture.add_call(RuntimeCall(
+                caller_module=item["caller_module"],
+                caller_function=item["caller_function"],
+                callee_module=item["callee_module"],
+                callee_function=item["callee_function"],
+                caller_file="",
+                callee_file="",
+            ))
     architecture.trace_kind = "sampled"
     architecture.sample_count = sum(item["samples"] for item in calls)
     architecture.execution_mode = "spring_boot_startup"
