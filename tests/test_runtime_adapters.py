@@ -48,3 +48,22 @@ def test_unsupported_language_is_never_reported_as_runtime_calls(tmp_path):
     scenario.write_text("class Main {}", encoding="utf-8")
     with pytest.raises(RuntimeError, match="call-level runtime adapter is not implemented"):
         execute_scenario(tmp_path, "main.go")
+
+
+
+def test_java_configuration_class_is_not_selected_as_runtime_entrypoint(tmp_path):
+    first, second = tmp_path / "v1", tmp_path / "v2"
+    first.mkdir()
+    second.mkdir()
+    for root in (first, second):
+        (root / "HibernateConfiguration.java").write_text(
+            "@Configuration class HibernateConfiguration {}",
+            encoding="utf-8",
+        )
+        (root / "BankingApp.java").write_text(
+            "public class BankingApp { public static void main(String[] args) {} }",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(FileNotFoundError, match="No common executable scenario"):
+        common_entrypoint(first, second)

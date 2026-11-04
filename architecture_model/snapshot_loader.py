@@ -196,20 +196,17 @@ def load_snapshot(
             )
 
         else:
-            # ------------------------------------------------
-            # Some older architecture databases may not store
-            # snapshot_id directly in components.
-            #
-            # In that case we load all components.
-            # ------------------------------------------------
+            # Without snapshot ownership, loading every component would make
+            # every historical snapshot display the same architecture. Fail
+            # closed rather than mixing records from unrelated snapshots.
+            component_rows = []
+            component_query = None
 
-            component_query += """
-                ORDER BY id
-            """
+            # Keep the common fetch path below compatible with both schemas.
+            cursor.execute("SELECT 1 WHERE 0")
 
-            cursor.execute(component_query)
-
-        component_rows = cursor.fetchall()
+        if has_snapshot_id:
+            component_rows = cursor.fetchall()
 
         components = []
 
@@ -406,27 +403,9 @@ def load_snapshot(
                 )
 
             else:
-
-                relationship_select = """
-                    source,
-                    target
-                """
-
-                if has_relationship_type:
-                    relationship_select += ", relationship_type"
-                else:
-                    relationship_select += (
-                        ", NULL AS relationship_type"
-                    )
-
-                cursor.execute(
-                    f"""
-                    SELECT
-                        {relationship_select}
-                    FROM relationships
-                    ORDER BY id
-                    """
-                )
+                # Never attach unscoped relationship rows to every snapshot.
+                # Doing so makes historical comparisons misleading.
+                cursor.execute("SELECT 1 WHERE 0")
 
             relationship_rows = cursor.fetchall()
 
@@ -442,6 +421,25 @@ def load_snapshot(
                 )
 
                 relationships.append(relationship)
+
+        # Some older snapshots persisted dependency keys on components but
+        # did not persist relationship rows. Reconstruct only from the
+        # selected snapshot's own components; do not infer from other commits.
+        if not relationships:
+            known_ids = {str(component.id) for component in components}
+            seen_edges = set()
+            for component in components:
+                for dependency in component.dependencies or []:
+                    target = str(dependency)
+                    if target not in known_ids:
+                        continue
+                    edge = (str(component.id), target, "depends_on")
+                    if edge in seen_edges:
+                        continue
+                    seen_edges.add(edge)
+                    relationships.append(Relationship(
+                        source=edge[0], target=edge[1], type=edge[2]
+                    ))
 
         # ====================================================
         # 6. LOAD METRICS

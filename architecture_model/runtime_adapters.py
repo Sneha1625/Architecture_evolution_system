@@ -101,9 +101,17 @@ def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
     shared = [
         (language, path)
         for language in first.keys() & second.keys()
-        if language in supported
+        if language in supported and language != "java"
         for path in set(first[language]) & set(second[language])
     ]
+    # Java is executable here only when both commits contain the same real
+    # Spring Boot application entry point. Do not pick an arbitrary .java
+    # source file (for example a @Configuration class) as a runtime scenario.
+    from architecture_model.java_runtime_adapter import discover_spring_boot_entrypoint
+    java_app_v1 = discover_spring_boot_entrypoint(v1)
+    java_app_v2 = discover_spring_boot_entrypoint(v2)
+    if java_app_v1 and java_app_v1 == java_app_v2:
+        shared.append(("java", java_app_v1))
     if not shared:
         detected = sorted(
             language for language in (first.keys() & second.keys())
@@ -118,14 +126,6 @@ def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
             "Go, Rust, C/C++, C#, PHP, and Ruby remain static-analysis only. "
             "Static dependency edges are not runtime calls."
         )
-    # Prefer the actual Spring Boot application class over configuration classes.
-    for language, paths in first.items():
-        if language == "java":
-            from architecture_model.java_runtime_adapter import discover_spring_boot_entrypoint
-            app_entry = discover_spring_boot_entrypoint(v1)
-            app_entry_v2 = discover_spring_boot_entrypoint(v2)
-            if app_entry and app_entry == app_entry_v2 and app_entry in paths and app_entry in second.get("java", []):
-                return ("java", app_entry)
     order = {name: i for i, name in enumerate(PREFERRED_NAMES)}
     shared.sort(key=lambda item: (
         order.get(Path(item[1]).name, len(order)),

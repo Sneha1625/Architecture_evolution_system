@@ -164,8 +164,11 @@ def _render_runtime_evolution(repository_path):
                 new_version=versions["v2_commit"],
             )
 
-        except FileNotFoundError as error:
-            st.warning(str(error))
+        except (FileNotFoundError, RuntimeError) as error:
+            st.warning(
+                "Runtime tracing was not available for these commits: "
+                + str(error)
+            )
             _render_static_commit_comparison(repository_path, v1_commit, v2_commit)
             return
 
