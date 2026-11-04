@@ -163,6 +163,7 @@ def _render_runtime_evolution(repository_path):
     old_runtime = comparison["old_runtime"]
     new_runtime = comparison["new_runtime"]
 
+    activity_label = "Sampled Runtime Edges" if versions.get("trace_kind") == "sampled" else "Runtime Call Records"
     metric_cols = st.columns(3)
 
     metric_cols[0].metric(
@@ -184,7 +185,7 @@ def _render_runtime_evolution(repository_path):
     )
 
     metric_cols[2].metric(
-        "Runtime Call Records",
+        activity_label,
         new_runtime["total_calls"],
         delta=comparison["call_difference"],
     )
@@ -233,7 +234,7 @@ def _render_runtime_evolution(repository_path):
     )
 
     st.caption(
-        "Chart order: Modules → Relationships → Runtime Call Records"
+        "Chart order: Modules → Relationships → " + activity_label
     )
 
     # ========================================================
