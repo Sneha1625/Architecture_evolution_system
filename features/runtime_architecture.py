@@ -148,8 +148,15 @@ def _render_runtime_evolution(repository_path):
         )
 
     st.caption(
-        f"Scenario: `{versions['scenario']}`"
+        f"Scenario: `{versions['scenario']}` · Language: {versions.get('language', 'Python')}"
     )
+    if versions.get("trace_kind") == "sampled":
+        st.warning(
+            "JavaScript/TypeScript runtime relationships are derived from V8 CPU-profile "
+            "samples. They show sampled execution paths, not exact function invocation counts."
+        )
+    else:
+        st.caption("Python runtime relationships are exact function-call events observed during this scenario.")
 
     # ========================================================
     # RUNTIME METRICS
@@ -183,7 +190,7 @@ def _render_runtime_evolution(repository_path):
     )
 
     metric_cols[2].metric(
-        "Profiled Calls",
+        "Runtime Call Records",
         new_runtime["total_calls"],
         delta=comparison["call_difference"],
     )
