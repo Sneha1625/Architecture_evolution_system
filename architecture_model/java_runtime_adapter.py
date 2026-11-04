@@ -85,13 +85,23 @@ def _run_build(root: Path, timeout: int) -> Path:
 
 
 def _parse_jfr_json(payload: dict, root: Path) -> list[dict]:
-    """Convert JFR jdk.ExecutionSample stack frames into sampled call edges."""
+    """Convert JFR execution-sample stacks into sampled project call edges."""
     events = payload.get("recording", {}).get("events", [])
     if not events and isinstance(payload.get("recording"), list):
         events = payload["recording"]
-    edges: dict[tuple[str, str, str, str], int] = {}
-    root_resolved = root.resolve()
+    project_packages = set()
+    for java_source in root.rglob("*.java"):
+        if any(part.lower() in {"target", "build", ".git", ".gradle"} for part in java_source.relative_to(root).parts[:-1]):
+            continue
+        try:
+            source_text = java_source.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        package_match = re.search(r"^\\s*package\\s+([\\w.]+)\\s*;", source_text, re.MULTILINE)
+        if package_match:
+            project_packages.add(package_match.group(1))
 
+    edges: dict[tuple[str, str, str, str], int] = {}
     for event in events:
         values = event.get("values", event)
         stack = values.get("stackTrace") or values.get("stacktrace") or {}
@@ -104,15 +114,16 @@ def _parse_jfr_json(payload: dict, root: Path) -> list[dict]:
             typ = method.get("type", {})
             class_name = typ.get("name", "") if isinstance(typ, dict) else str(typ or "")
             method_name = method.get("name", "")
-            if not class_name or not method_name or class_name.startswith(("java.", "jdk.", "sun.", "org.springframework.", "org.hibernate.", "org.apache.")):
+            if not class_name or not method_name:
+                continue
+            if project_packages and not any(class_name == package or class_name.startswith(package + ".") for package in project_packages):
                 continue
             if "$" in class_name:
                 class_name = class_name.split("$", 1)[0]
             project_frames.append((class_name, method_name))
-        # JFR frames are ordered from the sampled leaf outward to callers.
+        # JFR frames are ordered from sampled leaf outward to callers.
         for index in range(len(project_frames) - 1):
-            callee = project_frames[index]
-            caller = project_frames[index + 1]
+            callee, caller = project_frames[index], project_frames[index + 1]
             if caller[0] != callee[0]:
                 key = (caller[0], caller[1], callee[0], callee[1])
                 edges[key] = edges.get(key, 0) + 1
