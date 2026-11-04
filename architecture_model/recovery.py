@@ -242,13 +242,28 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
     module_to_component = {}
     java_type_to_component = {}
     java_package_to_components = {}
+    function_to_components = {}
     for item in parsed_results:
         path = item.get("file") or item.get("file_path") or item.get("path") or ""
         component_id = get_component(path)
         if not path or not component_id:
             continue
         language = (item.get("language") or ("python" if path.lower().endswith(".py") else "")).lower()
+        # Build a language-neutral function index so call-graph references can
+        # supplement import edges (useful for DI, callbacks, and framework wiring).
+        for function_name in (item.get("call_graph") or {}).keys():
+            function_to_components.setdefault(str(function_name), set()).add(component_id)
+        for function in item.get("functions", []):
+            if isinstance(function, dict) and function.get("name"):
+                function_to_components.setdefault(str(function["name"]), set()).add(component_id)
+            for method in (function.get("methods", []) if isinstance(function, dict) else []):
+                if isinstance(method, dict) and method.get("name"):
+                    function_to_components.setdefault(str(method["name"]), set()).add(component_id)
+
         if language == "python":
+            normalized = path.replace("\\", "/")
+            module_path = os.path.splitext(normalized)[0].replace("/", ".").lower()
+            module_to_component[module_path] = component_id
             module_to_component[os.path.basename(path)[:-3].lower()] = component_id
         elif language == "java":
             # Commit snapshots store repository-relative paths and the extracted
@@ -273,6 +288,8 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
 
     def resolve_js_import(source_file, imported):
         match = re.search(r"""(?:from\s+|import\s*)['"]([^'"]+)['"]""", imported)
+        if not match:
+            match = re.search(r"""require\s*\(\s*['"]([^'"]+)['"]\s*\)""", imported)
         if not match:
             return None
         import_path = match.group(1)
@@ -325,6 +342,22 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
                 key = (source_component, target_component, "depends_on")
                 if key not in existing:
                     relationships.append(Relationship(source=source_component, target=target_component, type="depends_on"))
+                    existing.add(key)
+                    source = next((component for component in components if component.id == source_component), None)
+                    if source is not None and target_component not in source.dependencies:
+                        source.dependencies.append(target_component)
+
+        # Resolve observed static call-graph references to a unique other component.
+        call_graph = item.get("call_graph") or {}
+        for called_names in call_graph.values():
+            for called_name in called_names or []:
+                candidates = function_to_components.get(str(called_name), set()) - {source_component}
+                if len(candidates) != 1:
+                    continue
+                target_component = next(iter(candidates))
+                key = (source_component, target_component, "calls")
+                if key not in existing:
+                    relationships.append(Relationship(source=source_component, target=target_component, type="calls"))
                     existing.add(key)
                     source = next((component for component in components if component.id == source_component), None)
                     if source is not None and target_component not in source.dependencies:
