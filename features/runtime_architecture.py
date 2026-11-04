@@ -1025,4 +1025,17 @@ def render_runtime_architecture(
     # RUNTIME EVOLUTION
     # ========================================================
 
-    _render_runtime_evolution()
+    # Runtime Evolution belongs to Architecture Evolution and uses the
+    # repository selected in the shared app_combined sidebar.
+    repository_path = (
+        st.session_state.get("evolution_repo_path")
+        or st.session_state.get("repository_local_path")
+        or st.session_state.get("github_repo_path")
+    )
+    if repository_path:
+        _render_runtime_evolution(repository_path)
+    else:
+        st.info(
+            "Load a GitHub repository from the shared app_combined sidebar "
+            "before comparing runtime architecture commits."
+        )
