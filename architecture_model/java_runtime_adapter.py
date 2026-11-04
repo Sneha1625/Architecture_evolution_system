@@ -183,7 +183,7 @@ def execute_java_scenario(root: str | Path, scenario: str, timeout: int = BUILD_
     process = None
     try:
         command = [
-            java, "-XX:StartFlightRecording=filename=" + str(recording) + ",settings=profile,dumponexit=true",
+            java, "-XX:StartFlightRecording=settings=profile",
             "-jar", str(jar), "--server.port=0",
         ]
         process = subprocess.Popen(command, cwd=root, stdout=log_file, stderr=subprocess.STDOUT)
