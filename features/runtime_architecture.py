@@ -146,8 +146,8 @@ def _render_runtime_evolution(repository_path):
     )
     if versions.get("trace_kind") == "sampled":
         st.warning(
-            "JavaScript/TypeScript runtime relationships are derived from V8 CPU-profile "
-            "samples. They show sampled execution paths, not exact function invocation counts."
+            "Runtime relationships are derived from profiler samples, not exact function "
+            "invocation counts. Java uses JDK Flight Recorder (JFR); JavaScript/TypeScript uses V8 CPU profiles."
         )
     else:
         st.caption("Python runtime relationships are exact function-call events observed during this scenario.")
