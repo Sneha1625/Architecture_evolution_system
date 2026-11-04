@@ -113,9 +113,9 @@ def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
             "No common executable scenario with an implemented runtime adapter "
             "was found in the selected commits. Common detected language(s): "
             + detected_text + ". Runtime call tracing is currently implemented "
-            "for Python and JavaScript; TypeScript requires Node.js 22+ and a "
-            "supported .ts scenario. Java, Go, Rust, C/C++, C#, PHP, and Ruby "
-            "remain available for static architecture comparison only. "
+            "for Python, JavaScript, and Spring Boot Java (JDK 11+ with Maven or Gradle); "
+            "TypeScript requires Node.js 22+ and a supported .ts scenario. "
+            "Go, Rust, C/C++, C#, PHP, and Ruby remain static-analysis only. "
             "Static dependency edges are not runtime calls."
         )
     # Prefer the actual Spring Boot application class over configuration classes.
