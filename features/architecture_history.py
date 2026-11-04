@@ -56,6 +56,8 @@ from features.runtime_pipeline import (
     run_repository_parser,
 )
 
+from architecture_model.github_evolution_pipeline import analyze_commit
+
 
 # ============================================================
 # DATABASE HELPERS
@@ -1056,6 +1058,42 @@ def render_history_view(
     selected_snapshot = load_snapshot(
         selected_snapshot_id
     )
+
+    # Repair legacy Java snapshots once per Streamlit session. Earlier versions
+    # persisted Java components without resolving package imports, so the saved
+    # graph can be empty even though the selected commit contains dependencies.
+    if selected_snapshot is not None and not selected_snapshot.relationships:
+        repair_key = f"architecture_snapshot_relationship_repair_{selected_snapshot_id}"
+        if not st.session_state.get(repair_key, False):
+            repository_path = (
+                st.session_state.get("evolution_repo_path")
+                or st.session_state.get("repository_local_path")
+                or st.session_state.get("github_repo_path")
+            )
+            repository_url = (
+                st.session_state.get("evolution_repo_url")
+                or st.session_state.get("repository_url")
+                or st.session_state.get("github_repository_url")
+            )
+            has_java_files = any(
+                str(file_path).lower().endswith(".java")
+                for component in selected_snapshot.components
+                for file_path in component.files
+            )
+            if repository_path and repository_url and has_java_files:
+                try:
+                    analyze_commit(
+                        repository_path=str(repository_path),
+                        repository_url=str(repository_url),
+                        commit_hash=selected_snapshot.commit_hash,
+                    )
+                    selected_snapshot = load_snapshot(selected_snapshot_id)
+                except Exception as repair_error:
+                    st.warning(
+                        "Could not refresh legacy Java architecture relationships: "
+                        + str(repair_error)
+                    )
+            st.session_state[repair_key] = True
 
     selected_info = get_snapshot_info(
         selected_snapshot_id
