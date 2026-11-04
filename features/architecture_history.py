@@ -1074,17 +1074,15 @@ def render_history_view(
 
         st.markdown("---")
 
+        # Use the repository loaded by app_combined. Passing a parser
+        # callable here would trace this app's Python parser, not the
+        # selected repository's own execution. The Runtime Architecture
+        # page builds its language-neutral source relationship view from
+        # the shared repository path when no live target is configured.
         render_runtime_architecture(
             static_relationships=selected_snapshot.relationships,
             static_components=selected_snapshot.components,
-            target=lambda: run_repository_parser(
-                str(Path.cwd())
-            ),
-            include_prefixes=[
-                "features",
-                "src",
-                "architecture_model",
-            ],
+            target=None,
         )
 
     # --------------------------------------------------------
