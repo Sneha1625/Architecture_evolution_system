@@ -153,6 +153,13 @@ def execute_java_scenario(root: str | Path, scenario: str, timeout: int = BUILD_
     source = root / scenario
     if not source.is_file():
         raise FileNotFoundError(f"Spring Boot entry-point source not found: {source}")
+    actual_entrypoint = discover_spring_boot_entrypoint(root)
+    if actual_entrypoint != Path(scenario).as_posix():
+        raise RuntimeError(
+            "Java runtime tracing requires the actual @SpringBootApplication main class. "
+            + "Selected: " + scenario + "; discovered: " + str(actual_entrypoint or "none") + ". "
+            + "Configuration classes such as HibernateConfiguration.java are not executable scenarios."
+        )
     if not (root / "pom.xml").exists() and not any((root / n).exists() for n in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")):
         raise RuntimeError("The selected Java project has no Maven or Gradle build descriptor.")
 
