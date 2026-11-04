@@ -1,4 +1,6 @@
 ﻿import os
+import re
+import hashlib
 from typing import List, Dict, Any
 
 from architecture_model.model import (
