@@ -46,7 +46,7 @@ def discover_python_entrypoints(worktree_path):
     Web/UI launchers are excluded because they can block until timeout.
     """
     root = Path(worktree_path).resolve()
-    preferred = ("main.py", "run.py", "cli.py", "__main__.py", "manage.py", "app.py")
+    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py", "manage.py", "app.py")
     ignored = {".git", ".venv", "venv", "env", "__pycache__", "site-packages", "node_modules", "tests", "test", "build", "dist"}
     server_markers = ("streamlit", "fastapi", "flask", "gradio", "uvicorn", "app.run(", "uvicorn.run(", "gradio.launch(")
     files = []
@@ -145,9 +145,8 @@ def profiler(frame, event, arg):
     if not is_architecture_module(callee_module, frame.f_code.co_filename):
         return profiler
 
-    if caller_module == callee_module:
-        return profiler
-
+    # Keep same-module function calls too. They are useful runtime evidence
+    # for small/demo projects even when no cross-module edge is exercised.
     caller_file = caller.f_code.co_filename
     callee_file = frame.f_code.co_filename
 
