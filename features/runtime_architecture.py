@@ -103,14 +103,24 @@ def _render_runtime_evolution(repository_path):
                 new_version=versions["v2_commit"],
             )
 
-        except Exception as error:
-
-            st.error(
-                "Runtime evolution comparison failed."
+        except FileNotFoundError as error:
+            # Runtime tracing is currently Python-only and requires a shared,
+            # bounded scenario in both selected commits. Keep the static
+            # repository graph, dependencies, and architecture history visible.
+            st.warning(
+                "Runtime execution comparison is unavailable for these commits. "
+                "The selected versions do not share a runnable Python scenario. "
+                "Your static architecture graph, inferred relationships, dependency "
+                "inventory, and snapshot history remain available above. "
+                "Runtime tracing for Java, JavaScript, TypeScript, and other "
+                "languages is not implemented yet."
             )
+            st.caption(str(error))
+            return
 
+        except Exception as error:
+            st.error("Runtime execution comparison could not be completed.")
             st.exception(error)
-
             return
 
     # ========================================================
