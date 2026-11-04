@@ -13,7 +13,10 @@ from architecture_model.runtime_evolution import (
     compare_runtime_architectures,
     get_runtime_evolution_summary,
 )
-from architecture_model.runtime_version_runner import (\n    list_repository_commits,\n    run_version_pair,\n)
+from architecture_model.runtime_version_runner import (
+    list_repository_commits,
+    run_version_pair,
+)
 from features.runtime_mapping import build_runtime_component_map
 
 
