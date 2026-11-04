@@ -157,6 +157,7 @@ def _python_function_data(node: ast.AST, all_names: set[str]) -> dict[str, Any]:
         "complexity": complexity,
         "complexity_label": "low" if complexity <= 3 else "medium" if complexity <= 7 else "high",
         "calls": internal_calls,
+        "all_calls": calls,
         "is_async": isinstance(node, ast.AsyncFunctionDef),
         "decorators": decorators,
     }
@@ -187,7 +188,7 @@ def _parse_python(file_path: str, source_code: str) -> dict[str, Any]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             data = _python_function_data(node, all_names)
             result["functions"].append(data)
-            result["call_graph"][node.name] = data["calls"]
+            result["call_graph"][node.name] = data["all_calls"]
 
         elif isinstance(node, ast.ClassDef):
             methods = []
@@ -202,7 +203,7 @@ def _parse_python(file_path: str, source_code: str) -> dict[str, Any]:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     method = _python_function_data(item, all_names)
                     methods.append(method)
-                    result["call_graph"][item.name] = method["calls"]
+                    result["call_graph"][item.name] = method["all_calls"]
 
             decorators = []
             for decorator in node.decorator_list:
@@ -379,7 +380,7 @@ def _parse_tree_sitter(file_path: str, source_code: str, language: str) -> dict[
                 parent = parent.parent
             if nearest_class is class_node:
                 method_name = _function_name(fn, source)
-                calls = [c for c in _extract_calls(fn, source) if c in all_names and c != method_name]
+                calls = [c for c in _extract_calls(fn, source) if c != method_name]
                 complexity = _complexity(fn)
                 args_node = _field(fn, "parameters", "parameter_list", "formal_parameters", "arguments")
                 return_node = _field(fn, "return_type", "type")
@@ -423,7 +424,7 @@ def _parse_tree_sitter(file_path: str, source_code: str, language: str) -> dict[
             continue
 
         name = _function_name(fn, source)
-        calls = [c for c in _extract_calls(fn, source) if c in all_names and c != name]
+        calls = [c for c in _extract_calls(fn, source) if c != name]
         complexity = _complexity(fn)
         args_node = _field(fn, "parameters", "parameter_list", "formal_parameters", "arguments")
         return_node = _field(fn, "return_type", "type")
