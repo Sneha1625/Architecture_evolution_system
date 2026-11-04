@@ -680,7 +680,8 @@ def render_runtime_architecture(
             return
         st.caption("Selected repository: " + str(repository_url or repository_path))
         _render_repository_architecture(repository_path)
-        st.info("This is a multi-language static execution map. True live runtime tracing is currently available only for configured Python execution targets; it is not inferred from static source analysis.")
+        st.info("The repository overview above is static analysis. Python runtime evolution below executes a selected entry point from the two Git versions; non-Python languages remain static-analysis only.")
+        _render_runtime_evolution()
         return
 
     # --------------------------------------------------------
