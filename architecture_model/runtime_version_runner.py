@@ -544,9 +544,16 @@ def run_version_pair(
     timeout: int = 300,
 ):
     """
-    Execute the same Python entry point at two user-selected commits.
-    Each commit is checked out into an isolated temporary Git worktree.
+    Execute a shared scenario in two isolated commit worktrees.
+
+    Python tracing records exact observed Python calls. JavaScript/TypeScript
+    uses V8 CPU-profile samples (sampled edges, not exact call counts).
+    Other languages receive an explicit capability diagnostic until their
+    call-level adapter is implemented; static edges are never passed off as
+    runtime observations.
     """
+    from architecture_model.runtime_adapters import common_entrypoint, execute_scenario, language_for_path
+
     repository = Path(repository_path).resolve()
     if not repository.is_dir():
         raise FileNotFoundError(f"Selected GitHub repository path does not exist: {repository}")
@@ -565,8 +572,7 @@ def run_version_pair(
 
     with tempfile.TemporaryDirectory(prefix="architecture_commit_compare_") as temp:
         temp_root = Path(temp)
-        v1_path = temp_root / "version_1"
-        v2_path = temp_root / "version_2"
+        v1_path, v2_path = temp_root / "version_1", temp_root / "version_2"
         added = []
         try:
             for path, commit in ((v1_path, v1_commit), (v2_path, v2_commit)):
@@ -577,16 +583,24 @@ def run_version_pair(
                 added.append(path)
 
             if not scenario:
-                scenario = _common_python_entrypoint(v1_path, v2_path)
-            validate_worktree(v1_path, scenario)
-            validate_worktree(v2_path, scenario)
+                language, scenario = common_entrypoint(v1_path, v2_path)
+            else:
+                language = language_for_path(scenario)
+                if not language:
+                    raise ValueError(f"Unsupported runtime scenario file extension: {Path(scenario).suffix}")
+                if not (v1_path / scenario).is_file() or not (v2_path / scenario).is_file():
+                    raise FileNotFoundError(
+                        f"Selected scenario '{scenario}' must exist in both selected commits."
+                    )
 
-            v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
-            v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
+            v1_runtime = execute_scenario(v1_path, scenario, timeout=timeout)
+            v2_runtime = execute_scenario(v2_path, scenario, timeout=timeout)
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
                 "scenario": scenario,
+                "language": language,
+                "trace_kind": getattr(v1_runtime, "trace_kind", "exact"),
                 "v1_runtime": v1_runtime,
                 "v2_runtime": v2_runtime,
             }
@@ -600,90 +614,6 @@ def run_version_pair(
                 ["git", "-C", str(repository), "worktree", "prune"],
                 capture_output=True, text=True, timeout=30,
             )
-
-    print(
-        "=" * 60
-    )
-
-    print(
-        "RUNTIME VERSION EXECUTION"
-    )
-
-    print(
-        "=" * 60
-    )
-
-    print()
-
-    print(
-        f"V1: {v1_commit}"
-    )
-
-    print(
-        f"V2: {v2_commit}"
-    )
-
-    print(
-        f"Scenario: {scenario}"
-    )
-
-    # --------------------------------------------------------
-    # V1
-    # --------------------------------------------------------
-
-    print()
-    print(
-        "Executing V1..."
-    )
-
-    v1_runtime = run_version(
-        worktree_path=v1_path,
-        scenario=scenario,
-        timeout=timeout,
-    )
-
-    print(
-        "V1 completed:"
-        f" {v1_runtime.get_module_count()}"
-        " modules,"
-        f" {v1_runtime.get_relationship_count()}"
-        " relationships,"
-        f" {v1_runtime.total_calls}"
-        " calls"
-    )
-
-    # --------------------------------------------------------
-    # V2
-    # --------------------------------------------------------
-
-    print()
-    print(
-        "Executing V2..."
-    )
-
-    v2_runtime = run_version(
-        worktree_path=v2_path,
-        scenario=scenario,
-        timeout=timeout,
-    )
-
-    print(
-        "V2 completed:"
-        f" {v2_runtime.get_module_count()}"
-        " modules,"
-        f" {v2_runtime.get_relationship_count()}"
-        " relationships,"
-        f" {v2_runtime.total_calls}"
-        " calls"
-    )
-
-    return {
-        "v1_commit": v1_commit,
-        "v2_commit": v2_commit,
-        "scenario": scenario,
-        "v1_runtime": v1_runtime,
-        "v2_runtime": v2_runtime,
-    }
 
 
 # ============================================================
