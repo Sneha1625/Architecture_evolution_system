@@ -472,34 +472,106 @@ def run_version(
 # RUN TWO VERSIONS
 # ============================================================
 
+def list_repository_commits(repository_path, limit: int = 200):
+    """Return selectable commits from the repository used by Architecture Evolution."""
+    repository = Path(repository_path).resolve()
+    if not repository.is_dir():
+        raise FileNotFoundError(f"Selected repository directory does not exist: {repository}")
+    result = subprocess.run(
+        ["git", "-C", str(repository), "log", f"-{int(limit)}",
+         "--date=iso-strict", "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s"],
+        capture_output=True, text=True, check=True, timeout=30,
+    )
+    commits = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\x1f", 4)
+        if len(parts) == 5:
+            commits.append({
+                "sha": parts[0], "short_sha": parts[1], "author": parts[2],
+                "date": parts[3], "message": parts[4],
+            })
+    return commits
+
+
+def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
+    """Choose a Python entry point present in both selected commit snapshots."""
+    v1_candidates = set(discover_python_entrypoints(v1_path))
+    v2_candidates = set(discover_python_entrypoints(v2_path))
+    common = v1_candidates & v2_candidates
+    if not common:
+        raise FileNotFoundError(
+            "The selected commits have no common Python entry point. "
+            "Runtime tracing currently supports Python; static architecture "
+            "comparison can still analyze the other supported languages."
+        )
+    preferred = ("main.py", "app.py", "run.py", "cli.py", "__main__.py", "manage.py")
+    return sorted(common, key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))[0]
+
+
 def run_version_pair(
-    v1_path=DEFAULT_V1_PATH,
-    v2_path=DEFAULT_V2_PATH,
+    repository_path,
+    v1_commit: str,
+    v2_commit: str,
     scenario: str = DEFAULT_SCENARIO,
     timeout: int = 300,
 ):
     """
-    Execute exactly the same scenario against V1 and V2.
-
-    Returns a dictionary containing both RuntimeArchitecture
-    objects and their Git commit hashes.
+    Execute the same Python entry point at two user-selected commits.
+    Each commit is checked out into an isolated temporary Git worktree.
     """
+    repository = Path(repository_path).resolve()
+    if not repository.is_dir():
+        raise FileNotFoundError(f"Selected GitHub repository path does not exist: {repository}")
+    if not (repository / ".git").exists():
+        raise ValueError(f"Selected repository is not a Git checkout: {repository}")
+    if not v1_commit or not v2_commit:
+        raise ValueError("Select two commits before running Runtime Architecture comparison.")
+    if v1_commit == v2_commit:
+        raise ValueError("Choose two different commits to compare.")
 
-    v1_path = Path(
-        v1_path
-    ).resolve()
+    for commit in (v1_commit, v2_commit):
+        subprocess.run(
+            ["git", "-C", str(repository), "cat-file", "-e", f"{commit}^{{commit}}"],
+            capture_output=True, text=True, check=True, timeout=30,
+        )
 
-    v2_path = Path(
-        v2_path
-    ).resolve()
+    with tempfile.TemporaryDirectory(prefix="architecture_commit_compare_") as temp:
+        temp_root = Path(temp)
+        v1_path = temp_root / "version_1"
+        v2_path = temp_root / "version_2"
+        added = []
+        try:
+            for path, commit in ((v1_path, v1_commit), (v2_path, v2_commit)):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "add", "--detach", str(path), commit],
+                    capture_output=True, text=True, check=True, timeout=120,
+                )
+                added.append(path)
 
-    v1_commit = get_commit_hash(
-        v1_path
-    )
+            if not scenario:
+                scenario = _common_python_entrypoint(v1_path, v2_path)
+            validate_worktree(v1_path, scenario)
+            validate_worktree(v2_path, scenario)
 
-    v2_commit = get_commit_hash(
-        v2_path
-    )
+            v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
+            v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
+            return {
+                "v1_commit": get_commit_hash(v1_path),
+                "v2_commit": get_commit_hash(v2_path),
+                "scenario": scenario,
+                "v1_runtime": v1_runtime,
+                "v2_runtime": v2_runtime,
+            }
+        finally:
+            for path in reversed(added):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "remove", "--force", str(path)],
+                    capture_output=True, text=True, timeout=60,
+                )
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "prune"],
+                capture_output=True, text=True, timeout=30,
+            )
 
     print(
         "=" * 60
