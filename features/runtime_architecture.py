@@ -233,7 +233,7 @@ def _render_runtime_evolution(repository_path):
     )
 
     st.caption(
-        "Chart order: Modules → Relationships → Profiled Calls"
+        "Chart order: Modules → Relationships → Runtime Call Records"
     )
 
     # ========================================================
