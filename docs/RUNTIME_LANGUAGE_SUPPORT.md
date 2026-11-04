@@ -10,7 +10,7 @@ snapshots and must finish within the configured timeout.
 | --- | --- | --- |
 | Python | Built-in sys.setprofile tracer | Exact observed Python function-call events |
 | JavaScript (.js, .mjs, .cjs) | Node.js V8 CPU profiler | Sampled execution call-tree edges; not exact invocation counts |
-| TypeScript (.ts) | Node.js built-in type stripping (Node 22+) | Sampled execution call-tree edges; not exact invocation counts |
+| TypeScript (.ts) | Node.js built-in type stripping (Node 22+) | Sampled execution call-tree edges; not exact invocation counts |\n| Spring Boot Java | Maven/Gradle build + JDK Flight Recorder (JDK 11+) | Sampled Java execution stack edges during application startup; not exact invocation counts |
 
 TypeScript projects that require JSX, path aliases, decorators, or a custom
 build pipeline should provide a compiled JavaScript scenario. JSX/TSX is not
