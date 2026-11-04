@@ -104,16 +104,10 @@ def _render_runtime_evolution(repository_path):
             )
 
         except FileNotFoundError as error:
-            # Runtime tracing is currently Python-only and requires a shared,
-            # bounded scenario in both selected commits. Keep the static
-            # repository graph, dependencies, and architecture history visible.
             st.warning(
-                "Runtime execution comparison is unavailable for these commits. "
-                "The selected versions do not share a runnable Python scenario. "
-                "Your static architecture graph, inferred relationships, dependency "
-                "inventory, and snapshot history remain available above. "
-                "Runtime tracing for Java, JavaScript, TypeScript, and other "
-                "languages is not implemented yet."
+                "No common bounded runtime scenario was found in both selected commits. "
+                "Static architecture graphs, inferred relationships, dependency "
+                "inventory, and snapshot history remain available above."
             )
             st.caption(str(error))
             return
