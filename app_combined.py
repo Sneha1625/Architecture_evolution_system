@@ -68,7 +68,6 @@ def _apply_shared_repository(url, local_path):
     })
     st.session_state.pop("github_evolution_results", None)
     st.session_state.pop("github_evolution_results_url", None)
-    st.session_state.pop("evolution_repository_id", None)
     st.session_state.pop("evolution_selected_commit", None)
     st.session_state.pop("evolution_selected_commit_label", None)
     return len(source_files)
