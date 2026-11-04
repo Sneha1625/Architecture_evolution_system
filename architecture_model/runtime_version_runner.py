@@ -472,13 +472,13 @@ def run_version(
 # RUN TWO VERSIONS
 # ============================================================
 
-def list_repository_commits(repository_path, limit: int = 200):
+def list_repository_commits(repository_path):
     """Return selectable commits from the repository used by Architecture Evolution."""
     repository = Path(repository_path).resolve()
     if not repository.is_dir():
         raise FileNotFoundError(f"Selected repository directory does not exist: {repository}")
     result = subprocess.run(
-        ["git", "-C", str(repository), "log", f"-{int(limit)}",
+        ["git", "-C", str(repository), "log",
          "--date=iso-strict", "--pretty=format:%H%x1f%h%x1f%an%x1f%ad%x1f%s"],
         capture_output=True, text=True, check=True, timeout=30,
     )
