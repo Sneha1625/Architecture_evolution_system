@@ -176,11 +176,8 @@ def get_snapshots():
     if repository_id is None:
         return []
     return fetch_rows(
-        \\"\\"\\"SELECT id, repository_id, commit_hash, version, timestamp
-        FROM architecture_snapshots
-        WHERE repository_id = ?
-        ORDER BY id
-        \\"\\"\\",
+        "SELECT id, repository_id, commit_hash, version, timestamp "
+        "FROM architecture_snapshots WHERE repository_id = ? ORDER BY id",
         (repository_id,),
     )
 """).body[0]
