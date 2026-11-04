@@ -89,19 +89,34 @@ def discover_entrypoints(root: str | Path) -> dict[str, list[str]]:
 
 
 def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
-    """Return (language, relative path) shared by the two selected commits."""
+    """Return a shared scenario supported by an implemented runtime adapter.
+
+    Detection is intentionally broader than execution support: a Java file in
+    a Spring project must not be selected merely because it sorts before the
+    application's actual supported scenario. Java and other not-yet-instrumented
+    languages remain available to static architecture analysis.
+    """
     first, second = discover_entrypoints(v1), discover_entrypoints(v2)
+    supported = {"python", "javascript", "typescript"}
     shared = [
         (language, path)
         for language in first.keys() & second.keys()
+        if language in supported
         for path in set(first[language]) & set(second[language])
     ]
     if not shared:
+        detected = sorted(
+            language for language in (first.keys() & second.keys())
+        )
+        detected_text = ", ".join(detected) if detected else "no common source language"
         raise FileNotFoundError(
-            "No common executable source file was found in the selected commits. "
-            "Add a bounded runtime scenario present in both versions, such as "
-            "runtime_scenario.py or runtime_scenario.js. Static architecture "
-            "comparison remains available."
+            "No common executable scenario with an implemented runtime adapter "
+            "was found in the selected commits. Common detected language(s): "
+            + detected_text + ". Runtime call tracing is currently implemented "
+            "for Python and JavaScript; TypeScript requires Node.js 22+ and a "
+            "supported .ts scenario. Java, Go, Rust, C/C++, C#, PHP, and Ruby "
+            "remain available for static architecture comparison only. "
+            "Static dependency edges are not runtime calls."
         )
     order = {name: i for i, name in enumerate(PREFERRED_NAMES)}
     shared.sort(key=lambda item: (
