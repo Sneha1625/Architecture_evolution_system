@@ -251,15 +251,23 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
         if language == "python":
             module_to_component[os.path.basename(path)[:-3].lower()] = component_id
         elif language == "java":
-            try:
-                source = Path(path).read_text(encoding="utf-8", errors="ignore")
-            except (OSError, UnicodeError):
-                source = ""
-            package_match = re.search(r"^\s*package\s+([\w.]+)\s*;", source, re.MULTILINE)
-            package = package_match.group(1) if package_match else ""
-            for class_name in re.findall(r"\b(?:class|interface|enum|record)\s+(\w+)", source):
-                qualified = f"{package}.{class_name}" if package else class_name
-                java_type_to_component[qualified] = component_id
+            # Commit snapshots store repository-relative paths and the extracted
+            # worktree is already gone here. Resolve package names from the standard
+            # Maven/Gradle source layout instead of trying to reopen deleted files.
+            normalized_parts = path.replace("\\", "/").split("/")
+            lower_parts = [part.lower() for part in normalized_parts]
+            package_parts = []
+            for marker in (("src", "main", "java"), ("src", "test", "java")):
+                for index in range(len(lower_parts) - 2):
+                    if tuple(lower_parts[index:index + 3]) == marker:
+                        package_parts = normalized_parts[index + 3:-1]
+                        break
+                if package_parts:
+                    break
+            package = ".".join(package_parts)
+            class_name = os.path.splitext(os.path.basename(path))[0]
+            qualified = f"{package}.{class_name}" if package else class_name
+            java_type_to_component[qualified] = component_id
             if package:
                 java_package_to_components.setdefault(package, set()).add(component_id)
 
