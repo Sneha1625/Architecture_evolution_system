@@ -114,118 +114,50 @@ def component_name_from_path(file_path: str) -> str:
 
 def build_components(parsed_results: List[Dict[str, Any]]) -> List[Component]:
     """
-    Convert parser results into high-level architecture components.
+    Create one stable architecture component per source file.
 
-    Files are grouped into components based on their location:
-    - src/parser.py       -> Parser
-    - src/analyzer.py     -> Analyzer
-    - src/architect.py    -> Architect
-    - architecture_model/ -> Architecture Model
-    - features/           -> Features
-    - root-level files    -> Architecture Modeling System
-
-    Test files do not make the entire component a "test" layer.
+    Directory-level grouping hides relationships between classes/modules in
+    the same package. File-level components preserve those edges and make
+    additions/removals visible when a file is introduced or deleted.
     """
-
-    grouped = {}
+    components = []
+    seen_ids = set()
 
     for result in parsed_results:
-
         file_path = (
             result.get("file")
             or result.get("file_path")
             or result.get("path")
             or ""
         )
-
         if not file_path:
             continue
 
-        # ---------------------------------------------
-        # Determine component
-        # ---------------------------------------------
+        normalized = file_path.replace("\\", "/").strip("/")
+        stem = os.path.splitext(os.path.basename(normalized))[0]
+        display_name = stem.replace("_", " ").replace("-", " ").title() or "Unknown"
+        stable_path = os.path.splitext(normalized)[0].lower()
+        safe_key = re.sub(r"[^a-zA-Z0-9]+", "_", stable_path).strip("_")
+        component_id = "component_" + (safe_key or display_name.lower())
 
-        component_name = component_name_from_path(file_path)
+        # Keep identifiers unique even on case-insensitive filesystems.
+        if component_id in seen_ids:
+            suffix = abs(hash(normalized)) % 100000000
+            component_id = f"{component_id}_{suffix}"
+        seen_ids.add(component_id)
 
-        component_id = (
-            "component_"
-            + component_name.lower().replace(" ", "_")
-        )
-
-        if component_id not in grouped:
-            grouped[component_id] = {
-                "name": component_name,
-                "files": [],
-                "dependencies": set(),
-                "layers": []
-            }
-
-        grouped[component_id]["files"].append(file_path)
-
-        # ---------------------------------------------
-        # Determine layer
-        # ---------------------------------------------
-
-        layer = detect_layer(file_path)
-
-        grouped[component_id]["layers"].append(layer)
-
-    # ---------------------------------------------
-    # Create Component objects
-    # ---------------------------------------------
-
-    components = []
-
-    for component_id, data in grouped.items():
-
-        layers = data["layers"]
-
-        # ---------------------------------------------
-        # Ignore test files when determining the
-        # architecture layer of a component.
-        # ---------------------------------------------
-
-        non_test_layers = [
-            layer
-            for layer in layers
-            if layer != "test"
-        ]
-
-        if non_test_layers:
-
-            layer = max(
-                set(non_test_layers),
-                key=non_test_layers.count
-            )
-
-        elif layers:
-
-            # If the component contains only test files,
-            # classify it as test.
-            layer = "test"
-
-        else:
-
-            layer = "module"
-
-        # ---------------------------------------------
-        # Create component
-        # ---------------------------------------------
-
-        component = Component(
+        layer = detect_layer(normalized)
+        components.append(Component(
             id=component_id,
-            name=data["name"],
-            responsibility=(
-                f"{data['name']} related functionality"
-            ),
+            name=display_name,
+            responsibility=f"{display_name} source module",
             layer=layer,
-            files=data["files"],
-            dependencies=list(data["dependencies"])
-        )
-
-        components.append(component)
+            files=[normalized],
+            dependencies=[],
+        ))
 
     return components
+
 def build_relationships(components: List[Component], parsed_results: List[Dict[str, Any]]) -> List[Relationship]:
     """Build component dependencies from Python, JS/TS, and Java project imports."""
     import re
