@@ -51,21 +51,42 @@ def _tool(root: Path, names: tuple[str, ...]) -> str | None:
 
 
 def _run_build(root: Path, timeout: int) -> Path:
-    mvnw = _tool(root, ("mvnw.cmd", "mvnw")) if (root / "pom.xml").exists() else None
-    mvn = mvnw or shutil.which("mvn")
-    gradlew = _tool(root, ("gradlew.bat", "gradlew")) if (root / "settings.gradle").exists() or (root / "build.gradle").exists() or (root / "settings.gradle.kts").exists() or (root / "build.gradle.kts").exists() else None
-    gradle = gradlew or shutil.which("gradle")
+    """Build using a working system tool first; never invoke a broken wrapper."""
+    pom = root / "pom.xml"
+    gradle_files = ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
 
-    if (root / "pom.xml").exists() and mvn:
-        command = [mvn, "-q", "-DskipTests", "package"]
-    elif any((root / name).exists() for name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")) and gradle:
-        command = [gradle, "--no-daemon", "-q", "bootJar"]
-    elif (root / "pom.xml").exists():
-        raise RuntimeError("Maven project detected, but Maven is unavailable. Install Maven or include the Maven Wrapper (mvnw/mvnw.cmd).")
-    elif any((root / name).exists() for name in ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")):
-        raise RuntimeError("Gradle project detected, but Gradle is unavailable. Install Gradle or include the Gradle Wrapper.")
+    if pom.exists():
+        system_maven = shutil.which("mvn") or shutil.which("mvn.cmd")
+        wrapper_script = root / ("mvnw.cmd" if os.name == "nt" else "mvnw")
+        wrapper_properties = root / ".mvn" / "wrapper" / "maven-wrapper.properties"
+        wrapper_complete = wrapper_script.is_file() and wrapper_properties.is_file()
+        # Prefer system Maven; the wrapper cannot bootstrap without its properties file.
+        if system_maven:
+            command = [system_maven, "-B", "-ntp", "-q", "-DskipTests", "package"]
+        elif wrapper_complete:
+            command = [str(wrapper_script), "-B", "-ntp", "-q", "-DskipTests", "package"]
+        else:
+            missing = []
+            if not wrapper_script.is_file(): missing.append(wrapper_script.name)
+            if not wrapper_properties.is_file(): missing.append(".mvn/wrapper/maven-wrapper.properties")
+            raise RuntimeError(
+                "This commit has an incomplete Maven Wrapper (" + ", ".join(missing) + "). "
+                "The wrapper cannot bootstrap Maven without maven-wrapper.properties. "
+                "Install Apache Maven and ensure mvn -version works in the same terminal "
+                "that starts Streamlit, or restore the complete Maven Wrapper files."
+            )
+    elif any((root / name).exists() for name in gradle_files):
+        system_gradle = shutil.which("gradle") or shutil.which("gradle.bat")
+        wrapper_script = root / ("gradlew.bat" if os.name == "nt" else "gradlew")
+        wrapper_properties = root / "gradle" / "wrapper" / "gradle-wrapper.properties"
+        if system_gradle:
+            command = [system_gradle, "--no-daemon", "-q", "bootJar"]
+        elif wrapper_script.is_file() and wrapper_properties.is_file():
+            command = [str(wrapper_script), "--no-daemon", "-q", "bootJar"]
+        else:
+            raise RuntimeError("Gradle build detected, but neither system Gradle nor a complete Gradle Wrapper is available.")
     else:
-        raise RuntimeError("No Maven pom.xml or Gradle build file was found; this Java runtime adapter currently targets buildable Spring Boot projects.")
+        raise RuntimeError("No Maven pom.xml or Gradle build file was found; Java runtime tracing currently targets buildable Spring Boot projects.")
 
     try:
         result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=timeout)
@@ -73,7 +94,7 @@ def _run_build(root: Path, timeout: int) -> Path:
         raise RuntimeError(f"Java project build exceeded {timeout} seconds.") from exc
     if result.returncode:
         tail = (result.stdout + "\n" + result.stderr)[-9000:]
-        raise RuntimeError("Spring Boot build failed. Check the selected commit's dependencies and build configuration.\n" + tail)
+        raise RuntimeError("Spring Boot build failed. Build command: " + " ".join(command[:2]) + "\n" + tail)
 
     jars = list((root / "target").glob("*.jar")) if (root / "target").exists() else []
     jars += list((root / "build" / "libs").glob("*.jar")) if (root / "build" / "libs").exists() else []
@@ -82,7 +103,6 @@ def _run_build(root: Path, timeout: int) -> Path:
         raise RuntimeError("Build completed but no executable Spring Boot JAR was found in target/ or build/libs/.")
     jars.sort(key=lambda p: (0 if "boot" in p.name.lower() else 1, -p.stat().st_mtime))
     return jars[0]
-
 
 def _parse_jfr_json(payload: dict, root: Path) -> list[dict]:
     """Convert JFR execution-sample stacks into sampled project call edges."""
