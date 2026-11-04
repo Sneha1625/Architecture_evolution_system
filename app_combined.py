@@ -43,15 +43,21 @@ def _valid_github_url(value):
 def _apply_shared_repository(url, local_path):
     """Share one multi-language source-file list with both applications."""
     from repository.loader import get_source_files, get_repository_name
+    from architecture_model.github_evolution_pipeline import get_or_create_repository
     source_files = get_source_files(local_path)
+    repository_name = get_repository_name(local_path)
+    repository_id = get_or_create_repository(repository_name, url)
     st.session_state.update({
+        "evolution_repository_id": repository_id,
+        "architecture_history_repository": repository_id,
+        "selected_repository_id": repository_id,
         "repository_url": url,
         "selected_repo_url": url,
         "evolution_repo_url": url,
         "github_repo_path": str(local_path),
         "repository_local_path": str(local_path),
         "evolution_repo_path": str(local_path),
-        "repository_name": get_repository_name(local_path),
+        "repository_name": repository_name,
         "repository_source": "GitHub",
         "repository_file_paths": source_files,
         "repository_source_file_paths": source_files,
@@ -155,6 +161,32 @@ APP_SOURCES = ('c-rl~ZEqt<njrRFzapKD-X=8^OQouw>64ocuq2jBUcH^DszIM1u#;p`%&8=kmzk^
 
 
 class _CombinedNavigation(ast.NodeTransformer):
+    def visit_FunctionDef(self, node):
+        # The embedded Evolution app originally lists snapshots from every
+        # repository in the shared SQLite database. Bind all snapshot-based
+        # pages to the repository selected in the combined sidebar.
+        if node.name == "get_snapshots":
+            replacement = ast.parse("""
+def get_snapshots():
+    repository_id = (
+        st.session_state.get("evolution_repository_id")
+        or st.session_state.get("architecture_history_repository")
+        or st.session_state.get("selected_repository_id")
+    )
+    if repository_id is None:
+        return []
+    return fetch_rows(
+        \\"\\"\\"SELECT id, repository_id, commit_hash, version, timestamp
+        FROM architecture_snapshots
+        WHERE repository_id = ?
+        ORDER BY id
+        \\"\\"\\",
+        (repository_id,),
+    )
+""").body[0]
+            return ast.copy_location(replacement, node)
+        return self.generic_visit(node)
+
     def visit_Expr(self, node):
         if isinstance(node.value, ast.Call):
             call = node.value
