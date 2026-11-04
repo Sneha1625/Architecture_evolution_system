@@ -83,59 +83,33 @@ def detect_layer(file_path: str) -> str:
 
 
 def component_name_from_path(file_path: str) -> str:
-    """
-    Determine the architecture component from a file path.
-
-    Files directly under src/ become individual components.
-    Files inside a subdirectory are grouped by that subdirectory.
-    Files at the project root belong to the main system component.
-    """
-
+    """Infer a useful component name from source layout, including Java packages."""
     normalized = file_path.replace("\\", "/")
-    parts = [p for p in normalized.split("/") if p]
-
+    parts = [part for part in normalized.split("/") if part]
     if not parts:
         return "Unknown"
-
-    filename = parts[-1]
-    filename_without_ext = os.path.splitext(filename)[0]
-
-    # Find the src directory.
-    src_index = None
-
-    for i, part in enumerate(parts):
-        if part.lower() == "src":
-            src_index = i
-            break
-
-    # Files directly inside src/
-    #
-    # Example:
-    # src/parser.py -> Parser
-    # src/analyzer.py -> Analyzer
-    if src_index is not None:
-        items_after_src = parts[src_index + 1:]
-
-        if len(items_after_src) == 1:
-            return filename_without_ext.replace("_", " ").title()
-
-        # Files inside a subdirectory of src/
-        #
-        # Example:
-        # src/database/models.py -> Database
-        directory = items_after_src[0]
-
-        return directory.replace("_", " ").title()
-
-    # Files inside architecture_model/
-    if "architecture_model" in [p.lower() for p in parts]:
+    lower_parts = [part.lower() for part in parts]
+    # Maven/Gradle Java layout: do not collapse all source beneath the leading "com".
+    for marker in (("src", "main", "java"), ("src", "test", "java")):
+        for index in range(len(lower_parts) - 2):
+            if tuple(lower_parts[index:index + 3]) == marker:
+                package_parts = parts[index + 3:-1]
+                if package_parts:
+                    meaningful = [p for p in package_parts if p.lower() not in {"com", "org", "net", "io", "jakarta"}]
+                    chosen = meaningful[-1] if meaningful else package_parts[-1]
+                    return chosen.replace("_", " ").replace("-", " ").title()
+                return os.path.splitext(parts[-1])[0].replace("_", " ").title()
+    if "src" in lower_parts:
+        src_index = lower_parts.index("src")
+        after_src = parts[src_index + 1:]
+        if len(after_src) == 1:
+            return os.path.splitext(after_src[0])[0].replace("_", " ").title()
+        if after_src:
+            return after_src[0].replace("_", " ").title()
+    if "architecture_model" in lower_parts:
         return "Architecture Model"
-
-    # Files inside features/
-    if "features" in [p.lower() for p in parts]:
+    if "features" in lower_parts:
         return "Features"
-
-    # Files directly in the project root
     return "Architecture Modeling System"
 
 def build_components(parsed_results: List[Dict[str, Any]]) -> List[Component]:
@@ -252,193 +226,103 @@ def build_components(parsed_results: List[Dict[str, Any]]) -> List[Component]:
         components.append(component)
 
     return components
-def build_relationships(
-    components: List[Component],
-    parsed_results: List[Dict[str, Any]]
-) -> List[Relationship]:
-    """
-    Build component-level relationships from Python,
-    JavaScript, and TypeScript imports.
-    """
-
+def build_relationships(components: List[Component], parsed_results: List[Dict[str, Any]]) -> List[Relationship]:
+    """Build component dependencies from Python, JS/TS, and Java project imports."""
+    import re
     relationships = []
     existing = set()
-
     file_to_component = {}
-
     for component in components:
         for file_path in component.files:
-            normalized = os.path.normcase(
-                os.path.normpath(file_path)
-            )
-            file_to_component[normalized] = component.id
+            file_to_component[os.path.normcase(os.path.normpath(file_path))] = component.id
 
     def get_component(file_path):
-        normalized = os.path.normcase(
-            os.path.normpath(file_path)
-        )
-        return file_to_component.get(normalized)
+        return file_to_component.get(os.path.normcase(os.path.normpath(file_path)))
 
-    # Index project files for resolving relative imports.
-    project_files = []
+    module_to_component = {}
+    java_type_to_component = {}
+    java_package_to_components = {}
+    for item in parsed_results:
+        path = item.get("file") or item.get("file_path") or item.get("path") or ""
+        component_id = get_component(path)
+        if not path or not component_id:
+            continue
+        language = (item.get("language") or ("python" if path.lower().endswith(".py") else "")).lower()
+        if language == "python":
+            module_to_component[os.path.basename(path)[:-3].lower()] = component_id
+        elif language == "java":
+            try:
+                source = Path(path).read_text(encoding="utf-8", errors="ignore")
+            except (OSError, UnicodeError):
+                source = ""
+            package_match = re.search(r"^\s*package\s+([\w.]+)\s*;", source, re.MULTILINE)
+            package = package_match.group(1) if package_match else ""
+            for class_name in re.findall(r"\b(?:class|interface|enum|record)\s+(\w+)", source):
+                qualified = f"{package}.{class_name}" if package else class_name
+                java_type_to_component[qualified] = component_id
+            if package:
+                java_package_to_components.setdefault(package, set()).add(component_id)
 
-    for result in parsed_results:
-        path = (
-            result.get("file")
-            or result.get("file_path")
-            or result.get("path")
-            or ""
-        )
-
-        if path:
-            project_files.append(path)
-
-    def resolve_relative_import(source_file, imported):
-        import re
-
-        match = re.search(
-            r"""from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]""",
-            imported
-        )
-
+    def resolve_js_import(source_file, imported):
+        match = re.search(r"""(?:from\s+|import\s*)['"]([^'"]+)['"]""", imported)
         if not match:
             return None
-
-        import_path = match.group(1) or match.group(2)
-
+        import_path = match.group(1)
         if not import_path.startswith("."):
             return None
-
-        source_directory = os.path.dirname(source_file)
-
-        target_base = os.path.normpath(
-            os.path.join(source_directory, import_path)
-        )
-
-        extensions = [
-            "",
-            ".js", ".jsx", ".mjs", ".cjs",
-            ".ts", ".tsx"
-        ]
-
-        candidates = []
-
-        for extension in extensions:
-            candidates.append(target_base + extension)
-
-        for extension in [".js", ".jsx", ".ts", ".tsx"]:
-            candidates.append(
-                os.path.join(target_base, "index" + extension)
-            )
-
-        normalized_project_files = {
-            os.path.normcase(os.path.normpath(path)): path
-            for path in project_files
-        }
-
+        base = os.path.normpath(os.path.join(os.path.dirname(source_file), import_path))
+        candidates = [base + ext for ext in ("", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".py")]
+        candidates += [os.path.join(base, "index" + ext) for ext in (".js", ".jsx", ".ts", ".tsx", ".py", ".java")]
         for candidate in candidates:
-            key = os.path.normcase(
-                os.path.normpath(candidate)
-            )
-
-            if key in normalized_project_files:
-                return normalized_project_files[key]
-
+            for item in parsed_results:
+                path = item.get("file") or item.get("file_path") or item.get("path") or ""
+                if os.path.normcase(os.path.normpath(path)) == os.path.normcase(os.path.normpath(candidate)):
+                    return path
         return None
 
-    # Index Python module names.
-    module_to_component = {}
+    def resolve_java_import(imported):
+        statement = re.sub(r"^\s*import\s+", "", imported.strip())
+        statement = statement.removesuffix(";").strip()
+        statement = re.sub(r"^static\s+", "", statement)
+        if statement.endswith(".*"):
+            targets = java_package_to_components.get(statement[:-2], set())
+            return next(iter(targets)) if len(targets) == 1 else None
+        return java_type_to_component.get(statement)
 
-    for component in components:
-        for file_path in component.files:
-            filename = os.path.basename(file_path)
-
-            if filename.endswith(".py"):
-                module_to_component[
-                    filename[:-3].lower()
-                ] = component.id
-
-    for result in parsed_results:
-        source_file = (
-            result.get("file")
-            or result.get("file_path")
-            or result.get("path")
-            or ""
-        )
-
-        if not source_file:
-            continue
-
+    for item in parsed_results:
+        source_file = item.get("file") or item.get("file_path") or item.get("path") or ""
         source_component = get_component(source_file)
-
-        if not source_component:
+        if not source_file or not source_component:
             continue
-
-        language = (
-    result.get("language")
-    or ("python" if source_file.lower().endswith(".py") else "")
-).lower()
-
-        for imported in result.get("imports", []):
+        language = (item.get("language") or ("python" if source_file.lower().endswith(".py") else "")).lower()
+        for imported in item.get("imports", []):
             if not imported:
                 continue
-
             imported = str(imported).strip()
             target_component = None
-
             if language in ("javascript", "typescript", "tsx"):
-                target_file = resolve_relative_import(
-                    source_file,
-                    imported
-                )
-
-                if target_file:
-                    target_component = get_component(target_file)
-
+                target_file = resolve_js_import(source_file, imported)
+                target_component = get_component(target_file) if target_file else None
             elif language == "python":
                 module_parts = imported.lower().split(".")
-
                 for length in range(len(module_parts), 0, -1):
-                    candidate = ".".join(module_parts[:length])
-
-                    if candidate in module_to_component:
-                        target_component = module_to_component[candidate]
+                    target_component = module_to_component.get(".".join(module_parts[:length]))
+                    if target_component:
                         break
-
                 if not target_component:
-                    target_component = module_to_component.get(
-                        module_parts[-1]
-                    )
-
-            if (
-                target_component
-                and target_component != source_component
-            ):
-                key = (
-                    source_component,
-                    target_component,
-                    "depends_on"
-                )
-
+                    target_component = module_to_component.get(module_parts[-1])
+            elif language == "java":
+                target_component = resolve_java_import(imported)
+            if target_component and target_component != source_component:
+                key = (source_component, target_component, "depends_on")
                 if key not in existing:
-                    relationships.append(
-                        Relationship(
-                            source=source_component,
-                            target=target_component,
-                            type="depends_on"
-                        )
-                    )
-
+                    relationships.append(Relationship(source=source_component, target=target_component, type="depends_on"))
                     existing.add(key)
-
-                    for component in components:
-                        if component.id == source_component:
-                            if target_component not in component.dependencies:
-                                component.dependencies.append(
-                                    target_component
-                                )
-
+                    source = next((component for component in components if component.id == source_component), None)
+                    if source is not None and target_component not in source.dependencies:
+                        source.dependencies.append(target_component)
     return relationships
+
 def recover_architecture(
     parsed_results: List[Dict[str, Any]],
     commit_hash: str = "unknown"
