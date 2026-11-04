@@ -47,4 +47,4 @@ def test_unsupported_language_is_never_reported_as_runtime_calls(tmp_path):
     scenario = tmp_path / "Main.java"
     scenario.write_text("class Main {}", encoding="utf-8")
     with pytest.raises(RuntimeError, match="call-level runtime adapter is not implemented"):
-        execute_scenario(tmp_path, "Main.java")
+        execute_scenario(tmp_path, "main.go")
