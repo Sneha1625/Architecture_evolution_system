@@ -662,7 +662,7 @@ def _render_repository_architecture(repository_path):
         dot_lines.append(f'  "{_dot_quote(source_name)}" -> "{_dot_quote(target_name)}";')
     dot_lines.append("}")
     try:
-        st.graphviz_chart("\\n".join(dot_lines), use_container_width=True)
+        st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
     except Exception as graph_error:
         st.warning(f"Could not render the dependency graph: {graph_error}")
 
