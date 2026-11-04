@@ -543,6 +543,91 @@ def _render_runtime_evolution():
 # ============================================================
 
 
+def _render_repository_architecture(repository_path):
+    """Build a language-neutral architecture view from the shared repository."""
+    from collections import Counter
+    from pathlib import Path
+    from src.parser import parse_folder
+
+    root = Path(repository_path).resolve()
+    if not root.is_dir():
+        st.error(f"The selected repository path is unavailable: {root}")
+        return
+
+    with st.spinner("Analyzing source files across supported languages..."):
+        parsed_files = parse_folder(str(root))
+
+    parsed_files = [item for item in parsed_files if not item.get("error") or item.get("functions") or item.get("classes") or item.get("imports")]
+    if not parsed_files:
+        st.warning("No supported source files could be parsed in this repository.")
+        return
+
+    language_counts = Counter(item.get("language", "unknown") for item in parsed_files)
+    function_count = sum(len(item.get("functions", [])) + sum(len(cls.get("methods", [])) for cls in item.get("classes", [])) for item in parsed_files)
+    class_count = sum(len(item.get("classes", [])) for item in parsed_files)
+    import_count = sum(len(item.get("imports", [])) for item in parsed_files)
+
+    st.markdown("### Repository Architecture Overview")
+    st.caption("This view is generated from the repository selected in the combined sidebar. Relationships are inferred from source imports and parser call graphs; they are not observed live execution calls.")
+    a, b, c, d = st.columns(4)
+    a.metric("Source files", len(parsed_files))
+    b.metric("Functions / methods", function_count)
+    c.metric("Classes / types", class_count)
+    d.metric("Imports", import_count)
+
+    st.markdown("#### Languages detected")
+    st.bar_chart(dict(language_counts))
+
+    path_to_module = {}
+    for item in parsed_files:
+        rel = Path(item["file"]).resolve().relative_to(root).as_posix()
+        path_to_module[rel] = rel
+    relationships = set()
+    for item in parsed_files:
+        source = Path(item["file"]).resolve()
+        source_rel = source.relative_to(root).as_posix()
+        source_dir = source.parent
+        for imported in item.get("imports", []):
+            raw = str(imported).strip().replace("\\", "/")
+            raw = raw.removeprefix("from ").split(" import ")[0].strip().strip("'").strip('"')
+            raw = raw.removesuffix(";")
+            candidates = [raw.replace(".", "/"), raw]
+            target_rel = None
+            for candidate in candidates:
+                candidate = candidate.lstrip("/")
+                for suffix in ("", ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".php", ".rb", ".cs", ".c", ".cpp"):
+                    possible = (source_dir / (candidate + suffix)).resolve()
+                    try:
+                        rel = possible.relative_to(root).as_posix()
+                    except ValueError:
+                        continue
+                    if rel in path_to_module and rel != source_rel:
+                        target_rel = rel
+                        break
+                if target_rel:
+                    break
+            if target_rel:
+                relationships.add((source_rel, target_rel, "import"))
+
+    st.markdown("#### Inferred module relationships")
+    if relationships:
+        st.dataframe([{ "Source file": s, "Target file": t, "Evidence": kind } for s, t, kind in sorted(relationships)], use_container_width=True, hide_index=True)
+    else:
+        st.info("No internal file-to-file import relationships were resolved. The parsed file and function inventory is still available below.")
+
+    with st.expander("Source file inventory", expanded=False):
+        for item in sorted(parsed_files, key=lambda value: str(value.get("file", ""))):
+            rel = Path(item["file"]).resolve().relative_to(root).as_posix()
+            st.markdown("**" + rel + "** · " + str(item.get("language", "unknown")))
+            funcs = [fn.get("name", "") for fn in item.get("functions", [])]
+            classes = [cls.get("name", "") for cls in item.get("classes", [])]
+            if funcs:
+                st.caption("Functions: " + ", ".join(funcs[:30]))
+            if classes:
+                st.caption("Types: " + ", ".join(classes[:30]))
+            if item.get("error"):
+                st.warning(str(item["error"]))
+
 def render_runtime_architecture(
     static_relationships=None,
     static_components=None,
@@ -580,13 +665,22 @@ def render_runtime_architecture(
     # --------------------------------------------------------
 
     if target is None:
-
-        st.info(
-            "No runtime execution target has been configured."
+        repository_path = (
+            st.session_state.get("evolution_repo_path")
+            or st.session_state.get("repository_local_path")
+            or st.session_state.get("github_repo_path")
         )
-
-        _render_runtime_evolution()
-
+        repository_url = (
+            st.session_state.get("evolution_repo_url")
+            or st.session_state.get("repository_url")
+            or st.session_state.get("github_repository_url")
+        )
+        if not repository_path:
+            st.info("Load a GitHub repository from the shared app_combined sidebar to analyze its runtime architecture.")
+            return
+        st.caption("Selected repository: " + str(repository_url or repository_path))
+        _render_repository_architecture(repository_path)
+        st.info("This is a multi-language static execution map. True live runtime tracing is currently available only for configured Python execution targets; it is not inferred from static source analysis.")
         return
 
     # --------------------------------------------------------
