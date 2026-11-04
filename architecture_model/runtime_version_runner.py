@@ -41,15 +41,23 @@ DEFAULT_SCENARIO = ""
 
 
 def discover_python_entrypoints(worktree_path):
-    """Return bounded, non-interactive Python entry points suitable for tracing.
+    """Find shared, bounded Python scripts for runtime tracing.
 
-    Web/UI launchers are excluded because they can block until timeout.
+    Do not restrict discovery to conventional filenames: many repositories
+    expose their executable logic through feature or utility modules. Exclude
+    known web-server launchers and test files to avoid blocking execution.
     """
     root = Path(worktree_path).resolve()
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py", "manage.py", "app.py")
-    ignored = {".git", ".venv", "venv", "env", "__pycache__", "site-packages", "node_modules", "tests", "test", "build", "dist"}
-    server_markers = ("streamlit", "fastapi", "flask", "gradio", "uvicorn", "app.run(", "uvicorn.run(", "gradio.launch(")
-    files = []
+    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    ignored = {
+        ".git", ".venv", "venv", "env", "__pycache__", "site-packages",
+        "node_modules", "tests", "test", "build", "dist", ".next",
+    }
+    server_markers = (
+        "streamlit.run", "fastapi(", "flask(", "gradio.launch(",
+        "uvicorn.run(", "app.run(", "st.run(",
+    )
+    candidates = []
     for path in root.rglob("*.py"):
         try:
             relative = path.relative_to(root)
@@ -57,19 +65,26 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(part.lower() in ignored for part in relative.parts[:-1]):
             continue
-        if path.name.startswith("test_"):
+        if path.name.startswith("test_") or path.name.endswith("_test.py"):
             continue
         try:
-            source = path.read_text(encoding="utf-8", errors="ignore")[:120000].lower()
+            source = path.read_text(encoding="utf-8", errors="ignore")[:160000].lower()
         except OSError:
             continue
         if any(marker in source for marker in server_markers):
             continue
-        if path.name in preferred:
-            files.append(relative.as_posix())
+        # Ignore obvious Streamlit page scripts, but retain ordinary modules
+        # that merely import project utilities.
+        if "import streamlit" in source and ("st.run(" in source or "streamlit run" in source):
+            continue
+        candidates.append(relative.as_posix())
     preferred_order = {name: index for index, name in enumerate(preferred)}
-    files.sort(key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))
-    return files[:200]
+    candidates.sort(key=lambda value: (
+        preferred_order.get(Path(value).name, len(preferred)),
+        len(Path(value).parts),
+        value.lower(),
+    ))
+    return candidates[:500]
 
 # ============================================================
 # CHILD-PROCESS TRACER
@@ -516,8 +531,9 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
             "scenario or CLI script that exercises the application logic, then retry. "
             "Static architecture comparison remains available for these commits."
         )
-    preferred = ("main.py", "app.py", "run.py", "cli.py", "__main__.py", "manage.py")
-    return sorted(common, key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))[0]
+    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred_order = {name: index for index, name in enumerate(preferred)}
+    return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
 
 
 def run_version_pair(
