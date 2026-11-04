@@ -114,7 +114,7 @@ def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
 NODE_PROFILE_RUNNER = r'''
 const inspector = require("inspector");
 const path = require("path");
-const { pathToFileURL } = require("url");
+const { pathToFileURL, fileURLToPath } = require("url");
 const session = new inspector.Session();
 session.connect();
 
@@ -143,9 +143,12 @@ function post(method, params = {}) {
       const calls = [];
       function visit(node, parent) {
         const frame = node.callFrame || {};
-        const file = frame.url || "";
+        const fileUrl = frame.url || "";
         const parentFrame = parent && parent.callFrame || {};
-        const parentFile = parentFrame.url || "";
+        const parentUrl = parentFrame.url || "";
+        const toPath = value => value.startsWith("file://") ? fileURLToPath(value) : value;
+        const file = toPath(fileUrl);
+        const parentFile = toPath(parentUrl);
         const inProject = value => {
           if (!value || value.startsWith("node:")) return false;
           try { return path.relative(root, value).startsWith("..") === false; }
