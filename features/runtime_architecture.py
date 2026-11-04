@@ -19,12 +19,73 @@ from architecture_model.runtime_version_runner import (
 )
 from features.runtime_mapping import build_runtime_component_map
 
+from architecture_model.github_evolution_pipeline import parse_commit
+from architecture_model.recovery import recover_architecture
+
 
 # ============================================================
 # RUNTIME EVOLUTION
 # ============================================================
 
 
+
+def _render_static_commit_comparison(repository_path, v1_commit, v2_commit):
+    """Show source-derived architecture evolution if runtime tracing is unavailable."""
+    st.info(
+        "No common executable runtime scenario was detected. Showing a static "
+        "architecture comparison for these exact commits instead; these are "
+        "source-derived dependencies, not observed runtime calls."
+    )
+    try:
+        old_parsed = parse_commit(repository_path, v1_commit)
+        new_parsed = parse_commit(repository_path, v2_commit)
+        old_arch = recover_architecture(old_parsed, commit_hash=v1_commit)
+        new_arch = recover_architecture(new_parsed, commit_hash=v2_commit)
+    except Exception as error:
+        st.error("Static architecture comparison could not be generated.")
+        st.exception(error)
+        return
+    old_components = {item.id: item for item in old_arch.components}
+    new_components = {item.id: item for item in new_arch.components}
+    old_edges = {(item.source, item.target, item.type) for item in old_arch.relationships}
+    new_edges = {(item.source, item.target, item.type) for item in new_arch.relationships}
+    st.subheader("Static Architecture Evolution")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("V1 components", len(old_components))
+    col2.metric("V2 components", len(new_components), delta=len(new_components) - len(old_components))
+    col3.metric("V2 inferred relationships", len(new_edges), delta=len(new_edges) - len(old_edges))
+    added_components = sorted(set(new_components) - set(old_components))
+    removed_components = sorted(set(old_components) - set(new_components))
+    added_edges = sorted(new_edges - old_edges)
+    removed_edges = sorted(old_edges - new_edges)
+    with st.expander("Components added", expanded=True):
+        if added_components:
+            for key in added_components:
+                st.write(f"+ **{new_components[key].name}** — {len(new_components[key].files)} source files")
+        else:
+            st.write("None detected.")
+    with st.expander("Components removed"):
+        if removed_components:
+            for key in removed_components:
+                st.write(f"- **{old_components[key].name}** — {len(old_components[key].files)} source files")
+        else:
+            st.write("None detected.")
+    with st.expander("Inferred relationships added", expanded=True):
+        if added_edges:
+            for source, target, kind in added_edges:
+                st.write(f"+ {source} -> {target} ({kind})")
+        else:
+            st.write("None detected from imports or unambiguous static call references.")
+    with st.expander("Inferred relationships removed"):
+        if removed_edges:
+            for source, target, kind in removed_edges:
+                st.write(f"- {source} -> {target} ({kind})")
+        else:
+            st.write("None detected.")
+    st.caption(
+        f"V1: {v1_commit[:12]} · {len(old_parsed)} parsed source files | "
+        f"V2: {v2_commit[:12]} · {len(new_parsed)} parsed source files"
+    )
 def _render_runtime_evolution(repository_path):
     """
     Run the same runtime scenario against V1 and V2 and display
@@ -104,12 +165,8 @@ def _render_runtime_evolution(repository_path):
             )
 
         except FileNotFoundError as error:
-            st.warning(
-                "No common bounded runtime scenario was found in both selected commits. "
-                "Static architecture graphs, inferred relationships, dependency "
-                "inventory, and snapshot history remain available above."
-            )
-            st.caption(str(error))
+            st.warning(str(error))
+            _render_static_commit_comparison(repository_path, v1_commit, v2_commit)
             return
 
         except Exception as error:
