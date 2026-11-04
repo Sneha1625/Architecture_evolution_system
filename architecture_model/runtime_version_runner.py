@@ -81,12 +81,7 @@ sys.path.insert(0, str(worktree))
 calls = []
 total_python_calls = 0
 
-TRACE_PREFIXES = (
-    "src.",
-    "architecture_model.",
-    "features.",
-    "database.",
-)
+
 
 @lru_cache(maxsize=8192)
 def is_project_file(filename):
@@ -117,8 +112,8 @@ def module_name(frame):
 
     return module_from_filename(frame.f_code.co_filename)
 
-def is_architecture_module(module):
-    return bool(module) and module.startswith(TRACE_PREFIXES)
+def is_architecture_module(module, filename):
+    return bool(module) and is_project_file(filename)
 
 def profiler(frame, event, arg):
     global total_python_calls
