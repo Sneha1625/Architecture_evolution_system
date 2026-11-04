@@ -626,9 +626,29 @@ def _render_repository_architecture(repository_path):
     st.bar_chart(dict(language_counts))
 
     path_to_module = {}
+    java_type_to_file = {}
+    java_package_to_files = {}
     for item in parsed_files:
         rel = Path(item["file"]).resolve().relative_to(root).as_posix()
         path_to_module[rel] = rel
+        if item.get("language") == "java":
+            parts = rel.replace("\\", "/").split("/")
+            lowered = [part.lower() for part in parts]
+            package_parts = []
+            for marker in (("src", "main", "java"), ("src", "test", "java")):
+                for index in range(len(lowered) - 2):
+                    if tuple(lowered[index:index + 3]) == marker:
+                        package_parts = parts[index + 3:-1]
+                        break
+                if package_parts:
+                    break
+            package = ".".join(package_parts)
+            class_name = Path(rel).stem
+            qualified = f"{package}.{class_name}" if package else class_name
+            java_type_to_file[qualified] = rel
+            if package:
+                java_package_to_files.setdefault(package, set()).add(rel)
+
     relationships = set()
     for item in parsed_files:
         source = Path(item["file"]).resolve()
@@ -636,6 +656,19 @@ def _render_repository_architecture(repository_path):
         source_dir = source.parent
         for imported in item.get("imports", []):
             raw = str(imported).strip().replace("\\", "/")
+            if item.get("language") == "java":
+                raw = raw.removeprefix("import ").removeprefix("static ").removesuffix(";").strip()
+                if raw.endswith(".*"):
+                    targets = java_package_to_files.get(raw[:-2], set())
+                    for target_rel in targets:
+                        if target_rel != source_rel:
+                            relationships.add((source_rel, target_rel, "import"))
+                    continue
+                target_rel = java_type_to_file.get(raw)
+                if target_rel and target_rel != source_rel:
+                    relationships.add((source_rel, target_rel, "import"))
+                continue
+
             raw = raw.removeprefix("from ").split(" import ")[0].strip().strip("'").strip('"')
             raw = raw.removesuffix(";")
             candidates = [raw.replace(".", "/"), raw]
