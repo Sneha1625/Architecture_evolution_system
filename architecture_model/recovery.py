@@ -142,7 +142,7 @@ def build_components(parsed_results: List[Dict[str, Any]]) -> List[Component]:
 
         # Keep identifiers unique even on case-insensitive filesystems.
         if component_id in seen_ids:
-            suffix = abs(hash(normalized)) % 100000000
+            suffix = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:8]
             component_id = f"{component_id}_{suffix}"
         seen_ids.add(component_id)
 
