@@ -41,10 +41,14 @@ DEFAULT_SCENARIO = ""
 
 
 def discover_python_entrypoints(worktree_path):
-    """Return likely executable Python entry points in a repository."""
+    """Return bounded, non-interactive Python entry points suitable for tracing.
+
+    Web/UI launchers are excluded because they can block until timeout.
+    """
     root = Path(worktree_path).resolve()
-    preferred = ("main.py", "app.py", "run.py", "cli.py", "__main__.py", "manage.py")
-    ignored = {".git", ".venv", "venv", "env", "__pycache__", "site-packages", "node_modules", "tests", "test"}
+    preferred = ("main.py", "run.py", "cli.py", "__main__.py", "manage.py", "app.py")
+    ignored = {".git", ".venv", "venv", "env", "__pycache__", "site-packages", "node_modules", "tests", "test", "build", "dist"}
+    server_markers = ("streamlit", "fastapi", "flask", "gradio", "uvicorn", "app.run(", "uvicorn.run(", "gradio.launch(")
     files = []
     for path in root.rglob("*.py"):
         try:
@@ -55,10 +59,15 @@ def discover_python_entrypoints(worktree_path):
             continue
         if path.name.startswith("test_"):
             continue
+        try:
+            source = path.read_text(encoding="utf-8", errors="ignore")[:120000].lower()
+        except OSError:
+            continue
+        if any(marker in source for marker in server_markers):
+            continue
         files.append(relative.as_posix())
     files.sort(key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))
     return files[:200]
-
 
 # ============================================================
 # CHILD-PROCESS TRACER
@@ -500,9 +509,11 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
     common = v1_candidates & v2_candidates
     if not common:
         raise FileNotFoundError(
-            "The selected commits have no common Python entry point. "
-            "Runtime tracing currently supports Python; static architecture "
-            "comparison can still analyze the other supported languages."
+            "The selected commits have no common non-interactive Python entry point. "
+            "Streamlit/Flask/FastAPI/Gradio launchers are excluded because they keep "
+            "running and cannot be traced as bounded scenarios. Add a short Python "
+            "scenario or CLI script that exercises the application logic, then retry. "
+            "Static architecture comparison remains available for these commits."
         )
     preferred = ("main.py", "app.py", "run.py", "cli.py", "__main__.py", "manage.py")
     return sorted(common, key=lambda value: (value not in preferred, len(Path(value).parts), value.lower()))[0]
