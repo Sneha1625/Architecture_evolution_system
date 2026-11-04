@@ -97,7 +97,7 @@ def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
     languages remain available to static architecture analysis.
     """
     first, second = discover_entrypoints(v1), discover_entrypoints(v2)
-    supported = {"python", "javascript", "typescript"}
+    supported = {"python", "javascript", "typescript", "java"}
     shared = [
         (language, path)
         for language in first.keys() & second.keys()
@@ -118,6 +118,14 @@ def common_entrypoint(v1: str | Path, v2: str | Path) -> tuple[str, str]:
             "remain available for static architecture comparison only. "
             "Static dependency edges are not runtime calls."
         )
+    # Prefer the actual Spring Boot application class over configuration classes.
+    for language, paths in first.items():
+        if language == "java":
+            from architecture_model.java_runtime_adapter import discover_spring_boot_entrypoint
+            app_entry = discover_spring_boot_entrypoint(v1)
+            app_entry_v2 = discover_spring_boot_entrypoint(v2)
+            if app_entry and app_entry == app_entry_v2 and app_entry in paths and app_entry in second.get("java", []):
+                return ("java", app_entry)
     order = {name: i for i, name in enumerate(PREFERRED_NAMES)}
     shared.sort(key=lambda item: (
         order.get(Path(item[1]).name, len(order)),
@@ -272,6 +280,9 @@ def execute_scenario(root: str | Path, scenario: str, timeout: int = 300) -> Run
     """Dispatch a scenario to its language-specific runtime adapter."""
     root = Path(root).resolve()
     language = language_for_path(scenario)
+    if language == "java":
+        from architecture_model.java_runtime_adapter import execute_java_scenario
+        return execute_java_scenario(root, scenario, timeout=timeout)
     if language in {"javascript", "typescript"}:
         return _run_node(root, scenario, timeout)
     if language == "python":
