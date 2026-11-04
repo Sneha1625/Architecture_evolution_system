@@ -233,6 +233,12 @@ def validate_worktree(
             f"{worktree_path}"
         )
 
+    if not scenario:
+        candidates = discover_python_entrypoints(worktree_path)
+        if not candidates:
+            raise FileNotFoundError("No Python entry point found in this repository. Add/select a runnable .py entry point.")
+        scenario = candidates[0]
+
     scenario_path = (
         worktree_path / scenario
     )
