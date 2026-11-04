@@ -364,61 +364,62 @@ def parse_commit(
 # ============================================================
 
 def _backfill_snapshot_relationships(snapshot_id: int, parsed_results: list[dict]) -> int:
-    """Repair relationship rows on older snapshots created before Java import recovery."""
+    """Rebuild stale component and relationship rows for an existing snapshot."""
     from architecture_model.recovery import recover_architecture
 
     recovered = recover_architecture(parsed_results)
-    if not recovered.relationships:
-        return 0
-
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        existing_rows = cursor.execute(
-            "SELECT source, target, relationship_type FROM relationships WHERE snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchall()
-        existing = {(row[0], row[1], row[2]) for row in existing_rows}
+        old_ids = [
+            row[0] for row in cursor.execute(
+                "SELECT id FROM components WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchall()
+        ]
+        if old_ids:
+            placeholders = ",".join("?" for _ in old_ids)
+            cursor.execute(f"DELETE FROM component_files WHERE component_id IN ({placeholders})", old_ids)
+            cursor.execute(f"DELETE FROM component_dependencies WHERE component_id IN ({placeholders})", old_ids)
+        cursor.execute("DELETE FROM components WHERE snapshot_id = ?", (snapshot_id,))
+        cursor.execute("DELETE FROM relationships WHERE snapshot_id = ?", (snapshot_id,))
 
-        component_rows = cursor.execute(
-            "SELECT id, component_key FROM components WHERE snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchall()
-        component_ids = {row[1]: row[0] for row in component_rows if row[1]}
-
-        inserted = 0
-        for relationship in recovered.relationships:
-            key = (relationship.source, relationship.target, relationship.type)
-            if key in existing:
-                continue
-            if relationship.source not in component_ids or relationship.target not in component_ids:
-                continue
+        component_ids = {}
+        for component in recovered.components:
             cursor.execute(
-                "INSERT INTO relationships (snapshot_id, source, target, relationship_type) VALUES (?, ?, ?, ?)",
-                (snapshot_id, relationship.source, relationship.target, relationship.type),
+                """INSERT INTO components
+                   (snapshot_id, name, component_type, component_key, responsibility, layer)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (snapshot_id, component.name, None, component.id, component.responsibility, component.layer),
             )
-            existing.add(key)
-            inserted += 1
-
-            source_id = component_ids[relationship.source]
-            dependency_exists = cursor.execute(
-                "SELECT 1 FROM component_dependencies WHERE component_id = ? AND dependency_component_key = ? LIMIT 1",
-                (source_id, relationship.target),
-            ).fetchone()
-            if not dependency_exists:
+            component_row_id = cursor.lastrowid
+            component_ids[component.id] = component_row_id
+            for file_path in component.files:
+                cursor.execute(
+                    "INSERT INTO component_files (component_id, file_path) VALUES (?, ?)",
+                    (component_row_id, file_path),
+                )
+            for dependency in component.dependencies:
                 cursor.execute(
                     "INSERT INTO component_dependencies (component_id, dependency_component_key) VALUES (?, ?)",
-                    (source_id, relationship.target),
+                    (component_row_id, dependency),
                 )
 
+        for relationship in recovered.relationships:
+            cursor.execute(
+                """INSERT INTO relationships
+                   (snapshot_id, source, target, relationship_type)
+                   VALUES (?, ?, ?, ?)""",
+                (snapshot_id, relationship.source, relationship.target, relationship.type),
+            )
+
+        total = len(recovered.relationships)
         metric_row = cursor.execute(
-            "SELECT id FROM architecture_metrics WHERE snapshot_id = ? AND metric_name = 'total_relationships' ORDER BY id DESC LIMIT 1",
+            """SELECT id FROM architecture_metrics
+               WHERE snapshot_id = ? AND metric_name = 'total_relationships'
+               ORDER BY id DESC LIMIT 1""",
             (snapshot_id,),
         ).fetchone()
-        total = cursor.execute(
-            "SELECT COUNT(*) FROM relationships WHERE snapshot_id = ?",
-            (snapshot_id,),
-        ).fetchone()[0]
         if metric_row:
             cursor.execute(
                 "UPDATE architecture_metrics SET metric_value = ?, metric_data = NULL WHERE id = ?",
@@ -426,11 +427,13 @@ def _backfill_snapshot_relationships(snapshot_id: int, parsed_results: list[dict
             )
         else:
             cursor.execute(
-                "INSERT INTO architecture_metrics (snapshot_id, metric_name, metric_value) VALUES (?, 'total_relationships', ?)",
+                """INSERT INTO architecture_metrics
+                   (snapshot_id, metric_name, metric_value)
+                   VALUES (?, 'total_relationships', ?)""",
                 (snapshot_id, total),
             )
         connection.commit()
-        return inserted
+        return total
     except Exception:
         connection.rollback()
         raise
