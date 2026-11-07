@@ -48,7 +48,17 @@ def discover_python_entrypoints(worktree_path):
     known web-server launchers and test files to avoid blocking execution.
     """
     root = Path(worktree_path).resolve()
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    # Prefer the repository's real architecture-recovery workflow over the
+    # standalone calculator demo. It exercises the parser and recovery model.
+    preferred = (
+        "test_architecture_recovery.py",
+        "runtime_scenario.py",
+        "main.py",
+        "run.py",
+        "cli.py",
+        "__main__.py",
+        "sample_project.py",
+    )
     ignored = {
         ".git", ".venv", "venv", "env", "__pycache__", "site-packages",
         "node_modules", "tests", "test", "build", "dist", ".next",
@@ -65,7 +75,12 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(part.lower() in ignored for part in relative.parts[:-1]):
             continue
-        if path.name.startswith("test_") or path.name.endswith("_test.py"):
+        # This repository-level script is a deliberate, bounded integration
+        # scenario (not a pytest test module). It exercises parser + recovery.
+        if (
+            (path.name.startswith("test_") and path.name != "test_architecture_recovery.py")
+            or path.name.endswith("_test.py")
+        ):
             continue
         try:
             source = path.read_text(encoding="utf-8", errors="ignore")[:160000].lower()
@@ -531,7 +546,15 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
             "scenario or CLI script that exercises the application logic, then retry. "
             "Static architecture comparison remains available for these commits."
         )
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred = (
+        "test_architecture_recovery.py",
+        "runtime_scenario.py",
+        "main.py",
+        "run.py",
+        "cli.py",
+        "__main__.py",
+        "sample_project.py",
+    )
     preferred_order = {name: index for index, name in enumerate(preferred)}
     return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
 
