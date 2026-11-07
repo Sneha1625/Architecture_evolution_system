@@ -164,10 +164,36 @@ class _CombinedNavigation(ast.NodeTransformer):
 
     def visit_Call(self, node):
         # Only replace the two known original navigation radios.
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "radio" and node.args:
+        if isinstance(node.func, ast.Attribute) and node.args:
             first = node.args[0]
-            if isinstance(first, ast.Constant) and first.value in ("Navigation", "Go to"):
-                return ast.copy_location(ast.Name(id="_combined_selected_page", ctx=ast.Load()), node)
+            sidebar_call = (
+                isinstance(node.func.value, ast.Attribute)
+                and isinstance(node.func.value.value, ast.Name)
+                and node.func.value.value.id == "st"
+                and node.func.value.attr == "sidebar"
+            )
+            if sidebar_call and isinstance(first, ast.Constant):
+                # The combined sidebar is the sole repository input. Disable
+                # the embedded evolution app's duplicate clone controls and
+                # feed its commit selector from the combined selection.
+                if node.func.attr == "text_input" and first.value == "Enter GitHub Repository URL":
+                    return ast.copy_location(ast.Name(id="_combined_repo_url", ctx=ast.Load()), node)
+                if node.func.attr == "selectbox" and first.value == "Select Git Commit":
+                    return ast.copy_location(ast.Name(id="_combined_selected_commit_label", ctx=ast.Load()), node)
+
+            if isinstance(first, ast.Constant):
+                # Architecture Intelligence's embedded repository-input page
+                # must consume the same loaded repo, not clone a second copy.
+                if node.func.attr == "text_input" and first.value == "Public GitHub Repository URL":
+                    return ast.copy_location(ast.Name(id="_combined_repo_url", ctx=ast.Load()), node)
+                if node.func.attr == "button" and first.value == "Load Repository":
+                    return ast.copy_location(ast.Constant(value=False), node)
+                if node.func.attr == "radio" and first.value == "Repository source":
+                    return ast.copy_location(ast.Constant(value="GitHub URL"), node)
+
+            if node.func.attr == "radio":
+                if isinstance(first, ast.Constant) and first.value in ("Navigation", "Go to"):
+                    return ast.copy_location(ast.Name(id="_combined_selected_page", ctx=ast.Load()), node)
         return self.generic_visit(node)
 
 
@@ -177,7 +203,14 @@ source = zlib.decompress(base64.b85decode(APP_SOURCES[which])).decode("utf-8")
 tree = ast.parse(source, filename=str(PROJECT_DIR / filename))
 tree = _CombinedNavigation().visit(tree)
 ast.fix_missing_locations(tree)
-namespace = {"__name__": "__main__", "__file__": str(PROJECT_DIR / filename), "__package__": None, "_combined_selected_page": page}
+namespace = {
+    "__name__": "__main__",
+    "__file__": str(PROJECT_DIR / filename),
+    "__package__": None,
+    "_combined_selected_page": page,
+    "_combined_repo_url": repo_url,
+    "_combined_selected_commit_label": st.session_state.get("combined_commit_label", ""),
+}
 try:
     exec(compile(tree, str(PROJECT_DIR / filename), "exec"), namespace)
 except Exception as exc:

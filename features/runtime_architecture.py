@@ -151,6 +151,53 @@ def _render_runtime_evolution(repository_path):
         f"Scenario: `{versions['scenario']}`"
     )
 
+    # Runtime traces cover only the selected executable scenario. Show the
+    # complete Git file diff separately so unrelated feature changes remain
+    # visible and a zero runtime delta is not mistaken for zero code changes.
+    source_changes = versions.get("source_changes", [])
+    st.markdown("#### Source-code changes between selected commits")
+    added_files = sum(1 for item in source_changes if item["status"].startswith("A"))
+    removed_files = sum(1 for item in source_changes if item["status"].startswith("D"))
+    modified_files = sum(1 for item in source_changes if item["status"].startswith(("M", "R", "C")))
+    diff_cols = st.columns(3)
+    diff_cols[0].metric("Files added", added_files)
+    diff_cols[1].metric("Files removed", removed_files)
+    diff_cols[2].metric("Files modified / renamed", modified_files)
+
+    if source_changes:
+        st.dataframe(
+            [
+                {
+                    "Change": item["status"],
+                    "File": item["file"],
+                    "Lines added": item["additions"],
+                    "Lines removed": item["deletions"],
+                }
+                for item in source_changes
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("Git reports no file-level source changes between these two commits.")
+
+    if source_changes and comparison["call_difference"] == 0 and not (
+        comparison["summary"]["modules_added"]
+        or comparison["summary"]["modules_removed"]
+        or comparison["summary"]["relationships_added"]
+        or comparison["summary"]["relationships_removed"]
+        or comparison["summary"]["call_count_changes"]
+        or comparison["summary"]["function_changes"]
+    ):
+        st.warning(
+            "The repository contains source-code changes, but the selected "
+            "runtime scenario produced the same observed call graph in both "
+            "versions. This means the changed code was not exercised by this "
+            "scenario; it does not mean the commits are identical. Use the "
+            "source-code changes above and the static Architecture History "
+            "comparison to inspect changes outside the executed path."
+        )
+
     # ========================================================
     # RUNTIME METRICS
     # ========================================================
