@@ -322,6 +322,45 @@ def display_snapshot(
             )
 
     # --------------------------------------------------------
+    # Graph for this exact snapshot (not the currently loaded repository head)
+    # --------------------------------------------------------
+    st.markdown("---")
+    st.subheader("Architecture Graph — Selected Snapshot")
+    graph_components = list(snapshot.components or [])
+    graph_relationships = list(snapshot.relationships or [])
+    if not graph_components:
+        st.info("This snapshot has no components to draw.")
+    else:
+        def _snapshot_dot_quote(value):
+            return str(value).replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\\n", " ")
+
+        component_labels = {}
+        dot_lines = [
+            "digraph SnapshotArchitecture {",
+            "  rankdir=LR;",
+            '  graph [bgcolor="transparent"]; ',
+            '  node [shape=box, style="rounded,filled", fillcolor="#E8F0FE", color="#5B78A6"]; ',
+        ]
+        for component in graph_components:
+            node_id = str(component.id or component.name)
+            component_labels[node_id] = component.name
+            component_labels[str(component.name)] = component.name
+            label = f"{component.name}\\n{component.layer}" if component.layer else component.name
+            dot_lines.append(f'  "{_snapshot_dot_quote(node_id)}" [label="{_snapshot_dot_quote(label)}"]; ')
+        for relationship in graph_relationships:
+            source_id = str(relationship.source)
+            target_id = str(relationship.target)
+            source_node = source_id if source_id in component_labels else next((key for key, value in component_labels.items() if value == source_id), source_id)
+            target_node = target_id if target_id in component_labels else next((key for key, value in component_labels.items() if value == target_id), target_id)
+            dot_lines.append(f'  "{_snapshot_dot_quote(source_node)}" -> "{_snapshot_dot_quote(target_node)}" [label="{_snapshot_dot_quote(relationship.type)}"]; ')
+        dot_lines.append("}")
+        try:
+            st.graphviz_chart("\\n".join(dot_lines), use_container_width=True)
+        except Exception as graph_error:
+            st.warning(f"Unable to render this snapshot graph: {graph_error}")
+            st.code("\\n".join(dot_lines), language="dot")
+
+    # --------------------------------------------------------
     # Metrics
     # --------------------------------------------------------
 
