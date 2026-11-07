@@ -73,9 +73,9 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(marker in source for marker in server_markers):
             continue
-        # Ignore obvious Streamlit page scripts, but retain ordinary modules
-        # that merely import project utilities.
-        if "import streamlit" in source and ("st.run(" in source or "streamlit run" in source):
+        # A Streamlit UI module is not a bounded scenario: importing it
+        # does not reproduce a user's button clicks or navigation path.
+        if "import streamlit" in source or "from streamlit" in source:
             continue
         candidates.append(relative.as_posix())
     preferred_order = {name: index for index, name in enumerate(preferred)}
