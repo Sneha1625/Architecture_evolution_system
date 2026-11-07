@@ -188,6 +188,36 @@ def _render_runtime_evolution(repository_path):
         delta=comparison["call_difference"],
     )
 
+    # Execution measurements are captured independently in each isolated
+    # commit worktree. Memory is explicitly labelled as traced Python
+    # allocations, not whole-process resident memory.
+    v1_metrics = getattr(versions["v1_runtime"], "execution_metrics", {}) or {}
+    v2_metrics = getattr(versions["v2_runtime"], "execution_metrics", {}) or {}
+
+    st.markdown("#### Execution Resource Measurements")
+    metric_rows = [
+        {
+            "Measurement": "Execution time (ms)",
+            "V1": v1_metrics.get("execution_time_ms"),
+            "V2": v2_metrics.get("execution_time_ms"),
+        },
+        {
+            "Measurement": "CPU time (ms)",
+            "V1": v1_metrics.get("cpu_time_ms"),
+            "V2": v2_metrics.get("cpu_time_ms"),
+        },
+        {
+            "Measurement": "Peak traced memory (MB)",
+            "V1": v1_metrics.get("peak_traced_memory_mb"),
+            "V2": v2_metrics.get("peak_traced_memory_mb"),
+        },
+    ]
+    st.dataframe(metric_rows, use_container_width=True, hide_index=True)
+    st.caption(
+        "Memory reports peak Python allocations tracked by tracemalloc; "
+        "it is not a measurement of total process RSS. Timings include scenario startup."
+    )
+
     # ========================================================
     # SUMMARY
     # ========================================================
