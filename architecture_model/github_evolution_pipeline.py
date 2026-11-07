@@ -34,7 +34,7 @@ from architecture_model.history_manager import (
 )
 
 from database.db import get_connection
-from src.parser import parse_folder
+from src.parser import EXTENSION_LANGUAGE, parse_folder
 
 
 # ============================================================
@@ -221,92 +221,95 @@ def extract_commit(
     repository_path: str | Path,
     commit_hash: str,
     destination: str | Path,
-) -> None:
+) -> dict:
     """
-    Extract the source files at a Git commit.
+    Extract supported source files from a Git commit.
 
-    Does not change the repository's working tree.
-    Rejects archive links and paths outside the destination.
+    Large binaries, generated folders, and oversized individual source files
+    are skipped instead of causing the entire repository analysis to fail.
+    The repository working tree is never checked out or modified.
     """
 
     repo = Path(repository_path).resolve()
     destination = Path(destination).resolve()
-
     destination.mkdir(parents=True, exist_ok=True)
-
     archive_path = destination.parent / "commit_archive.tar"
 
     with archive_path.open("wb") as archive_file:
         subprocess.run(
-            [
-                "git",
-                "-C",
-                str(repo),
-                "archive",
-                "--format=tar",
-                commit_hash,
-            ],
+            ["git", "-C", str(repo), "archive", "--format=tar", commit_hash],
             stdout=archive_file,
             stderr=subprocess.PIPE,
             check=True,
-            timeout=120,
+            timeout=600,
         )
+
+    stats = {
+        "extracted_source_files": 0,
+        "skipped_unsupported_files": 0,
+        "skipped_large_files": 0,
+        "skipped_total_limit_files": 0,
+    }
+    ignored_directories = {
+        ".git", ".venv", "venv", "env", "__pycache__", "node_modules",
+        ".idea", ".vscode", "build", "dist", "target", "bin", "obj",
+        ".next", ".nuxt", "coverage",
+    }
+    max_archive_entries = 1_000_000
+    max_source_files = 100_000
+    max_total_bytes = 1024 * 1024 * 1024
+    max_file_bytes = 25 * 1024 * 1024
+    total_bytes = 0
 
     with tarfile.open(archive_path, "r") as archive:
         members = archive.getmembers()
-
-        # Keep the initial implementation bounded.
-        max_files = 20000
-        max_total_bytes = 250 * 1024 * 1024
-        max_file_bytes = 10 * 1024 * 1024
-
-        if len(members) > max_files:
+        if len(members) > max_archive_entries:
             raise ValueError(
-                "Repository commit contains too many archive entries."
+                "Repository archive contains more than 1,000,000 entries. "
+                "Reduce generated/vendor content or analyze a smaller commit."
             )
 
-        total_bytes = 0
-
         for member in members:
-            if member.issym() or member.islnk():
+            if member.issym() or member.islnk() or not member.isfile():
                 continue
 
-            if not (member.isdir() or member.isfile()):
+            relative = Path(member.name)
+            if any(part in ignored_directories or part.startswith(".")
+                   for part in relative.parts[:-1]):
+                continue
+
+            if relative.suffix.lower() not in EXTENSION_LANGUAGE:
+                stats["skipped_unsupported_files"] += 1
                 continue
 
             target = (destination / member.name).resolve()
-
             if not target.is_relative_to(destination):
-                raise ValueError(
-                    f"Unsafe archive path: {member.name}"
-                )
-
-            if member.isdir():
-                target.mkdir(parents=True, exist_ok=True)
-                continue
+                raise ValueError(f"Unsafe archive path: {member.name}")
 
             if member.size > max_file_bytes:
-                raise ValueError(
-                    f"Repository file is too large: {member.name}"
-                )
+                stats["skipped_large_files"] += 1
+                continue
+
+            if stats["extracted_source_files"] >= max_source_files:
+                stats["skipped_total_limit_files"] += 1
+                continue
+
+            if total_bytes + member.size > max_total_bytes:
+                stats["skipped_total_limit_files"] += 1
+                continue
+
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = archive.extractfile(member)
+            if source is None:
+                continue
+
+            with source, target.open("wb") as output:
+                shutil.copyfileobj(source, output)
 
             total_bytes += member.size
+            stats["extracted_source_files"] += 1
 
-            if total_bytes > max_total_bytes:
-                raise ValueError(
-                    "Repository commit exceeds the extraction size limit."
-                )
-
-            target.parent.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
-            source = archive.extractfile(member)
-
-            if source is not None:
-                with source, target.open("wb") as output:
-                    shutil.copyfileobj(source, output)
+    return stats
 
 
 # ============================================================
@@ -316,7 +319,8 @@ def extract_commit(
 def parse_commit(
     repository_path: str | Path,
     commit_hash: str,
-) -> list[dict]:
+    return_stats: bool = False,
+) -> list[dict] | tuple[list[dict], dict]:
     """
     Parse all Python files from a specific Git commit.
 
@@ -337,7 +341,7 @@ def parse_commit(
             Path(temporary_directory) / "source"
         )
 
-        extract_commit(
+        extraction_stats = extract_commit(
             repository_path,
             resolved_commit,
             source_directory,
@@ -356,6 +360,8 @@ def parse_commit(
 
             result["file"] = relative_path.as_posix()
 
+        if return_stats:
+            return parsed_results, extraction_stats
         return parsed_results
 
 
@@ -411,9 +417,10 @@ def analyze_commit(
             "created": False,
         }
 
-    parsed_results = parse_commit(
+    parsed_results, extraction_stats = parse_commit(
         repo,
         resolved_commit,
+        return_stats=True,
     )
 
     snapshot_id = save_architecture_history(
@@ -427,6 +434,7 @@ def analyze_commit(
         "snapshot_id": snapshot_id,
         "commit_hash": resolved_commit,
         "created": True,
+        "extraction": extraction_stats,
     }
 
 
