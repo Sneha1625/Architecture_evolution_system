@@ -229,56 +229,53 @@ def get_relationships(snapshot_id=None):
 # ============================================================
 
 def normalize_component_reference(reference, components):
-
+    """Resolve relationship endpoints to actual snapshot component names."""
     if reference is None:
         return None
 
-    reference = str(reference)
+    raw = str(reference).strip()
+    if not raw:
+        return None
 
-    # Direct match
-    for component in components:
+    names = [
+        str(component["name"]).strip()
+        for component in components
+        if component.get("name") is not None
+    ]
 
-        if component["name"] == reference:
-            return component["name"]
+    # Exact and case-insensitive matches first.
+    for name in names:
+        if name == raw:
+            return name
+    for name in names:
+        if name.casefold() == raw.casefold():
+            return name
 
-    # component_parser -> Parser
-    if reference.startswith("component_"):
+    def key(value):
+        value = str(value).strip().casefold()
+        if value.startswith("component_"):
+            value = value[len("component_"):]
+        return "".join(character for character in value if character.isalnum())
 
-        suffix = reference[len("component_"):]
+    wanted = key(raw)
+    if not wanted:
+        return raw
 
-        normalized_suffix = (
-            suffix
-            .replace("_", " ")
-            .strip()
-            .lower()
-        )
+    matches = [name for name in names if key(name) == wanted]
+    if len(matches) == 1:
+        return matches[0]
 
-        for component in components:
+    # Some older snapshots store endpoints as component_<snake_case>
+    # while the component inventory uses display names.
+    if raw.casefold().startswith("component_"):
+        suffix = raw[len("component_"):]
+        suffix_key = key(suffix)
+        matches = [name for name in names if key(name) == suffix_key]
+        if len(matches) == 1:
+            return matches[0]
 
-            component_name = str(
-                component["name"]
-            ).strip()
-
-            if component_name.lower() == normalized_suffix:
-                return component_name
-
-        # Parser -> component_parser
-        for component in components:
-
-            component_name = str(
-                component["name"]
-            ).strip()
-
-            if (
-                component_name
-                .lower()
-                .replace(" ", "_")
-                == suffix.lower()
-            ):
-                return component_name
-
-    return reference
-
+    # Preserve unresolved endpoints instead of silently discarding them.
+    return raw
 
 def get_normalized_relationships(snapshot_id):
 
@@ -1144,16 +1141,19 @@ def show_architecture_graph():
     )
 
     component_names_list = [
-        component["name"]
+        str(component["name"]).strip()
         for component in components
         if component["name"]
     ]
 
-    unique_component_names = list(
-        dict.fromkeys(
-            component_names_list
-        )
-    )
+    # Include unresolved relationship endpoints as explicit external nodes.
+    # This keeps every stored relationship visible rather than dropping edges.
+    for relationship in relationships:
+        for endpoint in (relationship.get("source"), relationship.get("target")):
+            if endpoint and str(endpoint).strip():
+                component_names_list.append(str(endpoint).strip())
+
+    unique_component_names = list(dict.fromkeys(component_names_list))
 
     node_ids = {}
 
