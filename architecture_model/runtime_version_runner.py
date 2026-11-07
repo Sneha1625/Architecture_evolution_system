@@ -19,6 +19,8 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
+import tracemalloc
 from pathlib import Path
 
 from architecture_model.runtime_model import (
@@ -97,6 +99,8 @@ import runpy
 import sys
 from pathlib import Path
 from functools import lru_cache
+import time
+import tracemalloc
 
 worktree = Path(sys.argv[1]).resolve()
 scenario = sys.argv[2]
@@ -192,6 +196,9 @@ if not scenario_path.exists():
 
 old_cwd = Path.cwd()
 execution_error = None
+wall_started = time.perf_counter()
+cpu_started = time.process_time()
+tracemalloc.start()
 
 try:
     os.chdir(worktree)
@@ -210,8 +217,19 @@ try:
 finally:
     os.chdir(old_cwd)
 
+execution_time_seconds = time.perf_counter() - wall_started
+cpu_time_seconds = time.process_time() - cpu_started
+_, peak_traced_bytes = tracemalloc.get_traced_memory()
+tracemalloc.stop()
+
 result = {
     "entry_point": scenario,
+    "execution_metrics": {
+        "execution_time_ms": round(execution_time_seconds * 1000, 3),
+        "cpu_time_ms": round(cpu_time_seconds * 1000, 3),
+        "peak_traced_memory_mb": round(peak_traced_bytes / (1024 * 1024), 3),
+        "memory_measurement": "Python traced allocations (not total process RSS)",
+    },
     "worktree": str(worktree),
     "total_profiled_calls": total_python_calls,
     "calls": calls,
@@ -489,6 +507,8 @@ def run_version(
                 trace_data
             )
         )
+        # Measurements are attached separately to preserve the runtime model schema.
+        architecture.execution_metrics = trace_data.get("execution_metrics", {})
 
         return architecture
 
