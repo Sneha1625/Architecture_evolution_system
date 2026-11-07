@@ -173,7 +173,13 @@ class _CombinedNavigation(ast.NodeTransformer):
 
 which = 0 if section == "Architecture Intelligence" else 1
 filename = "app.py" if which == 0 else "app2.py"
-source = zlib.decompress(base64.b85decode(APP_SOURCES[which])).decode("utf-8")
+# Load the Evolution implementation from its readable source file so fixes
+# in app2_backup.py are used by the combined application (rather than a stale
+# compressed copy). Intelligence retains its embedded source for compatibility.
+if which == 1 and (PROJECT_DIR / "app2_backup.py").is_file():
+    source = (PROJECT_DIR / "app2_backup.py").read_text(encoding="utf-8")
+else:
+    source = zlib.decompress(base64.b85decode(APP_SOURCES[which])).decode("utf-8")
 tree = ast.parse(source, filename=str(PROJECT_DIR / filename))
 tree = _CombinedNavigation().visit(tree)
 ast.fix_missing_locations(tree)
