@@ -222,11 +222,22 @@ def _render_runtime_evolution(repository_path):
     # SUMMARY
     # ========================================================
 
-    st.info(
-        get_runtime_evolution_summary(
-            comparison
+    v1_trace_calls = versions["v1_runtime"].total_calls
+    v2_trace_calls = versions["v2_runtime"].total_calls
+    if v1_trace_calls == 0 or v2_trace_calls == 0:
+        st.warning(
+            "At least one selected commit produced no profiled project-to-project "
+            "function calls for this scenario. Runtime graph differences cannot "
+            "be interpreted as architectural equality. Use the static snapshot "
+            "comparison for complete source-level changes, and choose a scenario "
+            "that exercises the changed features."
         )
-    )
+        st.caption(
+            f"Observed profiled calls: V1={v1_trace_calls}, V2={v2_trace_calls}. "
+            f"Scenario: {versions['scenario']}"
+        )
+    else:
+        st.info(get_runtime_evolution_summary(comparison))
 
     # ========================================================
     # CHART 1 - RUNTIME METRICS V1 VS V2
