@@ -355,10 +355,10 @@ def display_snapshot(
             dot_lines.append(f'  "{_snapshot_dot_quote(source_node)}" -> "{_snapshot_dot_quote(target_node)}" [label="{_snapshot_dot_quote(relationship.type)}"]; ')
         dot_lines.append("}")
         try:
-            st.graphviz_chart("\\n".join(dot_lines), use_container_width=True)
+            st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
         except Exception as graph_error:
             st.warning(f"Unable to render this snapshot graph: {graph_error}")
-            st.code("\\n".join(dot_lines), language="dot")
+            st.code("\n".join(dot_lines), language="dot")
 
     # --------------------------------------------------------
     # Metrics
