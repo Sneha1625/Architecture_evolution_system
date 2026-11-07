@@ -590,7 +590,7 @@ def run_version_pair(
             )
             source_changes = []
             for line in diff.stdout.splitlines():
-                parts = line.split("\\t")
+                parts = line.split("\t")
                 if len(parts) >= 2:
                     source_changes.append({
                         "status": parts[0],
