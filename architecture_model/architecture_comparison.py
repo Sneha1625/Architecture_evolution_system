@@ -39,7 +39,7 @@ def _component_map(snapshot):
     """
 
     return {
-        component.id: component
+        (component.id or component.name): component
         for component in snapshot.components
     }
 
