@@ -42,3 +42,18 @@ def test_commit_source_changes_reports_added_modified_and_removed_files(tmp_path
     assert by_file["removed.py"]["status"] == "D"
     assert by_file["modified.py"]["additions"] == 1
     assert by_file["modified.py"]["deletions"] == 1
+
+
+def test_discovery_prefers_architecture_recovery_over_demo(tmp_path):
+    from architecture_model.runtime_version_runner import discover_python_entrypoints
+
+    (tmp_path / "sample_project.py").write_text(
+        "def demo():\n    return 1\n", encoding="utf-8"
+    )
+    (tmp_path / "test_architecture_recovery.py").write_text(
+        "def run_recovery():\n    return True\n", encoding="utf-8"
+    )
+
+    candidates = discover_python_entrypoints(tmp_path)
+
+    assert candidates[0] == "test_architecture_recovery.py"
