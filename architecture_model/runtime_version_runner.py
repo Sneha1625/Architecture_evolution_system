@@ -536,6 +536,49 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
     return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
 
 
+def get_commit_source_changes(repository_path, base_commit, head_commit):
+    """Return file-level Git changes between the exact selected commits.
+
+    Runtime traces describe only the exercised scenario. This independent
+    source diff ensures code changes outside that execution path are visible
+    and are never misreported as an unchanged repository.
+    """
+    repository = Path(repository_path).resolve()
+    result = subprocess.run(
+        ["git", "-C", str(repository), "diff", "--name-status",
+         "--find-renames", base_commit, head_commit],
+        capture_output=True, text=True, check=True, timeout=60,
+    )
+    numstat = subprocess.run(
+        ["git", "-C", str(repository), "diff", "--numstat",
+         base_commit, head_commit],
+        capture_output=True, text=True, check=True, timeout=60,
+    )
+    counts = {}
+    for line in numstat.stdout.splitlines():
+        parts = line.split("\t", 2)
+        if len(parts) == 3:
+            added = int(parts[0]) if parts[0].isdigit() else None
+            deleted = int(parts[1]) if parts[1].isdigit() else None
+            counts[parts[2]] = (added, deleted)
+
+    changes = []
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0]
+        path = parts[-1]
+        added, deleted = counts.get(path, (None, None))
+        changes.append({
+            "status": status,
+            "file": path,
+            "additions": added,
+            "deletions": deleted,
+        })
+    return changes
+
+
 def run_version_pair(
     repository_path,
     v1_commit: str,
@@ -589,6 +632,9 @@ def run_version_pair(
                 "scenario": scenario,
                 "v1_runtime": v1_runtime,
                 "v2_runtime": v2_runtime,
+                "source_changes": get_commit_source_changes(
+                    repository, v1_commit, v2_commit
+                ),
             }
         finally:
             for path in reversed(added):
