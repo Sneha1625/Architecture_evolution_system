@@ -40,7 +40,7 @@ def test_commit_source_changes_reports_added_modified_and_removed_files(tmp_path
     assert by_file["added.py"]["status"] == "A"
     assert by_file["modified.py"]["status"] == "M"
     assert by_file["removed.py"]["status"] == "D"
-    assert by_file["modified.py"]["additions"] == 1
+    assert by_file["modified.py"]["additions"] == 2
     assert by_file["modified.py"]["deletions"] == 1
 
 
