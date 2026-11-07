@@ -138,6 +138,14 @@ def _render_real_github_evolution():
                 st.session_state["github_evolution_requested_limit"] = int(commit_limit)
                 created_count = sum(bool(item["created"]) for item in results)
                 st.success(f"Requested {int(commit_limit)} commits; {len(results)} analyzed in this batch; {created_count} new snapshots.")
+                extraction_stats = [item.get("extraction", {}) for item in results if item.get("extraction")]
+                skipped_large = sum(item.get("skipped_large_files", 0) for item in extraction_stats)
+                skipped_limits = sum(item.get("skipped_total_limit_files", 0) for item in extraction_stats)
+                if skipped_large or skipped_limits:
+                    st.warning(
+                        f"Analysis continued with supported source files. "
+                        f"{skipped_large} oversized source files and {skipped_limits} files beyond the repository processing limits were skipped."
+                    )
             except Exception as exc:
                 st.error(f"Snapshot generation failed: {exc}")
 
@@ -236,7 +244,7 @@ if section == "Architecture Evolution" and page == "Architecture Graph":
                     f'[label="{_graph_quote(relationship.type)}"];'
                 )
             dot.append("}")
-            st.graphviz_chart("\\n".join(dot), use_container_width=True)
+            st.graphviz_chart("\n".join(dot), use_container_width=True)
 
         st.subheader("Snapshot Contents")
         left, right = st.columns(2)
