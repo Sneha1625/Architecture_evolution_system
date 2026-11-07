@@ -75,6 +75,11 @@ def _render_runtime_evolution(repository_path):
             help="Choose a script that exercises the application features you want to observe. A sample/demo script may not exercise the real application.",
             key="runtime_selected_scenario",
         )
+        st.caption(
+            "Runtime counts include only Python calls reached while this scenario runs. "
+            "Features not invoked by the scenario cannot appear as observed runtime changes; "
+            "use a dedicated scenario that exercises those features."
+        )
         col1, col2 = st.columns(2)
         with col1:
             v1_commit = st.selectbox(
