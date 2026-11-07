@@ -239,7 +239,7 @@ if execution_error:
 def validate_worktree(
     worktree_path: Path,
     scenario: str,
-) -> None:
+) -> str:
     """
     Validate the selected Git worktree and scenario.
     """
