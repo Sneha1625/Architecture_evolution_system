@@ -1239,34 +1239,70 @@ def render_architecture_history():
         return
 
     # --------------------------------------------------------
-    # Repository selector
+    # Use the single repository selected in app_combined.
+    # Fall back to the legacy selector only when this module is
+    # launched outside the combined application.
     # --------------------------------------------------------
 
-    repository_options = {
-        (
-            f"{repository['name']} "
-            f"(ID: {repository['id']})"
-        ): repository["id"]
-        for repository in repositories
-    }
-
-    selected_repository_label = st.selectbox(
-        "Select Repository",
-        list(repository_options.keys()),
-        key="architecture_history_repository"
+    shared_url = (
+        st.session_state.get("evolution_repo_url")
+        or st.session_state.get("repository_url")
+        or st.session_state.get("github_repository_url")
     )
+    repository_id = st.session_state.get("evolution_repository_id")
 
-    repository_id = repository_options[
-        selected_repository_label
-    ]
+    if shared_url:
+        normalized_url = shared_url.strip().lower().rstrip("/")
+        if normalized_url.endswith(".git"):
+            normalized_url = normalized_url[:-4]
+
+        if not repository_id:
+            matching = [
+                item for item in repositories
+                if (item.get("url") or "").strip().lower().rstrip("/").removesuffix(".git")
+                == normalized_url
+            ]
+            if matching:
+                repository_id = matching[0]["id"]
+                st.session_state["evolution_repository_id"] = repository_id
+
+        if not repository_id:
+            st.info(
+                "The selected repository is loaded. Generate architecture "
+                "snapshots from the GitHub Commit Evolution panel to populate "
+                "its history."
+            )
+            return
+
+        selected_repository = next(
+            (item for item in repositories if item["id"] == repository_id),
+            None,
+        )
+        if selected_repository:
+            st.caption(
+                f"Repository from combined input: "
+                f"{selected_repository['name']} · {shared_url}"
+            )
+    else:
+        repository_options = {
+            (
+                f"{repository['name']} "
+                f"(ID: {repository['id']})"
+            ): repository["id"]
+            for repository in repositories
+        }
+        selected_repository_label = st.selectbox(
+            "Select Repository",
+            list(repository_options.keys()),
+            key="architecture_history_repository",
+        )
+        repository_id = repository_options[selected_repository_label]
 
     # --------------------------------------------------------
     # Render history
     # --------------------------------------------------------
 
-    render_history_view(
-        repository_id
-    )
+    render_history_view(repository_id)
 
 
 # ============================================================

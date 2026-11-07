@@ -10,3 +10,4 @@ GitPython
 python-louvain
 pytest
 tree-sitter-language-pack
+graphviz

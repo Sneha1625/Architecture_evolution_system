@@ -188,15 +188,56 @@ def _render_runtime_evolution(repository_path):
         delta=comparison["call_difference"],
     )
 
+    # Execution measurements are captured independently in each isolated
+    # commit worktree. Memory is explicitly labelled as traced Python
+    # allocations, not whole-process resident memory.
+    v1_metrics = getattr(versions["v1_runtime"], "execution_metrics", {}) or {}
+    v2_metrics = getattr(versions["v2_runtime"], "execution_metrics", {}) or {}
+
+    st.markdown("#### Execution Resource Measurements")
+    metric_rows = [
+        {
+            "Measurement": "Execution time (ms)",
+            "V1": v1_metrics.get("execution_time_ms"),
+            "V2": v2_metrics.get("execution_time_ms"),
+        },
+        {
+            "Measurement": "CPU time (ms)",
+            "V1": v1_metrics.get("cpu_time_ms"),
+            "V2": v2_metrics.get("cpu_time_ms"),
+        },
+        {
+            "Measurement": "Peak traced memory (MB)",
+            "V1": v1_metrics.get("peak_traced_memory_mb"),
+            "V2": v2_metrics.get("peak_traced_memory_mb"),
+        },
+    ]
+    st.dataframe(metric_rows, use_container_width=True, hide_index=True)
+    st.caption(
+        "Memory reports peak Python allocations tracked by tracemalloc; "
+        "it is not a measurement of total process RSS. Timings include scenario startup."
+    )
+
     # ========================================================
     # SUMMARY
     # ========================================================
 
-    st.info(
-        get_runtime_evolution_summary(
-            comparison
+    v1_trace_calls = versions["v1_runtime"].total_calls
+    v2_trace_calls = versions["v2_runtime"].total_calls
+    if v1_trace_calls == 0 or v2_trace_calls == 0:
+        st.warning(
+            "At least one selected commit produced no profiled project-to-project "
+            "function calls for this scenario. Runtime graph differences cannot "
+            "be interpreted as architectural equality. Use the static snapshot "
+            "comparison for complete source-level changes, and choose a scenario "
+            "that exercises the changed features."
         )
-    )
+        st.caption(
+            f"Observed profiled calls: V1={v1_trace_calls}, V2={v2_trace_calls}. "
+            f"Scenario: {versions['scenario']}"
+        )
+    else:
+        st.info(get_runtime_evolution_summary(comparison))
 
     # ========================================================
     # CHART 1 - RUNTIME METRICS V1 VS V2
