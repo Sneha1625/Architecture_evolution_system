@@ -174,14 +174,22 @@ class _CombinedNavigation(ast.NodeTransformer):
             )
             if sidebar_call and isinstance(first, ast.Constant):
                 # The combined sidebar is the sole repository input. Disable
-                # the embedded app's duplicate clone controls and feed its
-                # commit selector from the combined selection.
+                # the embedded evolution app's duplicate clone controls and
+                # feed its commit selector from the combined selection.
                 if node.func.attr == "text_input" and first.value == "Enter GitHub Repository URL":
+                    return ast.copy_location(ast.Name(id="_combined_repo_url", ctx=ast.Load()), node)
+                if node.func.attr == "selectbox" and first.value == "Select Git Commit":
+                    return ast.copy_location(ast.Name(id="_combined_selected_commit_label", ctx=ast.Load()), node)
+
+            if isinstance(first, ast.Constant):
+                # Architecture Intelligence's embedded repository-input page
+                # must consume the same loaded repo, not clone a second copy.
+                if node.func.attr == "text_input" and first.value == "Public GitHub Repository URL":
                     return ast.copy_location(ast.Name(id="_combined_repo_url", ctx=ast.Load()), node)
                 if node.func.attr == "button" and first.value == "Load Repository":
                     return ast.copy_location(ast.Constant(value=False), node)
-                if node.func.attr == "selectbox" and first.value == "Select Git Commit":
-                    return ast.copy_location(ast.Name(id="_combined_selected_commit_label", ctx=ast.Load()), node)
+                if node.func.attr == "radio" and first.value == "Repository source":
+                    return ast.copy_location(ast.Constant(value="GitHub URL"), node)
 
             if node.func.attr == "radio":
                 if isinstance(first, ast.Constant) and first.value in ("Navigation", "Go to"):
