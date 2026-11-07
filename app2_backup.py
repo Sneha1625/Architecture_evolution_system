@@ -102,16 +102,62 @@ def get_repositories():
 
 
 def get_snapshots():
+    """Return snapshots for the repository loaded in the combined sidebar.
+
+    When the combined app has a selected repository URL, never mix snapshots
+    belonging to unrelated repositories in the graph, component, relationship,
+    or snapshot pages.
+    """
+    repository_id = st.session_state.get("evolution_repository_id")
+    repository_url = (
+        st.session_state.get("evolution_repo_url")
+        or st.session_state.get("repository_url")
+        or st.session_state.get("github_repository_url")
+    )
+
+    if repository_id:
+        return fetch_rows(
+            """
+            SELECT id, repository_id, commit_hash, version, timestamp
+            FROM architecture_snapshots
+            WHERE repository_id = ?
+            ORDER BY timestamp, id
+            """,
+            (repository_id,),
+        )
+
+    if repository_url:
+        normalized_url = repository_url.strip().lower().rstrip("/")
+        if normalized_url.endswith(".git"):
+            normalized_url = normalized_url[:-4]
+        repositories = fetch_rows(
+            """
+            SELECT id FROM repositories
+            WHERE LOWER(RTRIM(REPLACE(url, '.git', ''), '/')) = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (normalized_url,),
+        )
+        if not repositories:
+            return []
+        repository_id = repositories[0]["id"]
+        st.session_state["evolution_repository_id"] = repository_id
+        return fetch_rows(
+            """
+            SELECT id, repository_id, commit_hash, version, timestamp
+            FROM architecture_snapshots
+            WHERE repository_id = ?
+            ORDER BY timestamp, id
+            """,
+            (repository_id,),
+        )
+
     return fetch_rows(
         """
-        SELECT
-            id,
-            repository_id,
-            commit_hash,
-            version,
-            timestamp
+        SELECT id, repository_id, commit_hash, version, timestamp
         FROM architecture_snapshots
-        ORDER BY id
+        ORDER BY timestamp, id
         """
     )
 
@@ -1117,79 +1163,40 @@ def show_architecture_graph():
 
         node_ids[name] = f"node{index}"
 
-    mermaid_lines = [
-        "graph TD"
+    # Render with Streamlit's built-in Graphviz renderer. Mermaid's previous
+    # dynamically imported script was not reliably initialized inside the
+    # component iframe, and raw component names could break Mermaid syntax.
+    import json
+
+    dot_lines = [
+        "digraph Architecture {",
+        '  graph [rankdir="LR", bgcolor="transparent", pad="0.25", nodesep="0.55", ranksep="0.9"];',
+        '  node [shape="box", style="rounded,filled", fillcolor="#EAF2FF", color="#5577AA", fontname="Arial", fontsize="10", margin="0.16,0.10"];',
+        '  edge [color="#718096", arrowsize="0.75", fontname="Arial", fontsize="9"];',
     ]
 
-    for name in unique_component_names:
-
-        safe_name = str(name).replace(
-            '"',
-            "'",
-        )
-
-        mermaid_lines.append(
-            f'{node_ids[name]}["{safe_name}"]'
-        )
+    for index, name in enumerate(unique_component_names):
+        node_id = f"node{index}"
+        dot_lines.append(f"  {node_id} [label={json.dumps(str(name))}];")
 
     seen_edges = set()
-
     for relationship in relationships:
-
-        source = relationship["source"]
-        target = relationship["target"]
-
-        if source not in node_ids:
+        source = relationship.get("source")
+        target = relationship.get("target")
+        if source not in node_ids or target not in node_ids:
             continue
-
-        if target not in node_ids:
-            continue
-
-        edge = (
-            node_ids[source],
-            node_ids[target],
-        )
-
+        edge = (source, target)
         if edge in seen_edges:
             continue
-
         seen_edges.add(edge)
-
-        mermaid_lines.append(
-            f"{node_ids[source]} --> "
-            f"{node_ids[target]}"
+        edge_label = relationship.get("relationship_type")
+        label_attr = f" [label={json.dumps(str(edge_label))}]" if edge_label else ""
+        dot_lines.append(
+            f"  {node_ids[source]} -> {node_ids[target]}{label_attr};"
         )
 
-    mermaid_code = "\n".join(
-        mermaid_lines
-    )
-
-    st.components.v1.html(
-        f"""
-        <html>
-        <head>
-        <script type="module">
-        import mermaid from
-        'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-
-        mermaid.initialize({{
-            startOnLoad: true,
-            securityLevel: 'loose',
-            theme: 'default'
-        }});
-        </script>
-        </head>
-
-        <body>
-        <div class="mermaid">
-        {mermaid_code}
-        </div>
-        </body>
-        </html>
-        """,
-        height=700,
-        scrolling=True,
-    )
+    dot_lines.append("}")
+    st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
 
     st.divider()
 
@@ -2318,9 +2325,9 @@ try:
         render_architecture_history()
 
     elif page == "Runtime Architecture":
-        render_runtime_architecture(
-            target=lambda: run_repository_parser(str(BASE_DIR))
-        )
+        # Use the repository selected in the combined sidebar. Do not profile
+        # the Architecture Evolution System's own source tree by accident.
+        render_runtime_architecture(target=None)
 
 except sqlite3.Error as error:
 
