@@ -14,6 +14,7 @@ from architecture_model.runtime_evolution import (
     get_runtime_evolution_summary,
 )
 from architecture_model.runtime_version_runner import (
+    discover_python_entrypoints,
     list_repository_commits,
     run_version_pair,
 )
@@ -59,8 +60,21 @@ def _render_runtime_evolution(repository_path):
         item = commit_by_sha[sha]
         return f'{item["short_sha"]} · {item["message"][:90]} · {item["date"][:10]}'
 
+    try:
+        scenario_candidates = discover_python_entrypoints(repository_path)
+    except Exception:
+        scenario_candidates = []
+
     with st.form("runtime_commit_selection"):
-        st.markdown("#### Select the two commits to compare")
+        st.markdown("#### Select the two commits and execution scenario")
+        scenario_options = [""] + scenario_candidates
+        selected_scenario = st.selectbox(
+            "Python execution scenario",
+            options=scenario_options,
+            format_func=lambda value: "Auto-detect a common entry point" if not value else value,
+            help="Choose a script that exercises the application features you want to observe. A sample/demo script may not exercise the real application.",
+            key="runtime_selected_scenario",
+        )
         col1, col2 = st.columns(2)
         with col1:
             v1_commit = st.selectbox(
@@ -94,6 +108,7 @@ def _render_runtime_evolution(repository_path):
                 repository_path=repository_path,
                 v1_commit=v1_commit,
                 v2_commit=v2_commit,
+                scenario=selected_scenario,
             )
 
             comparison = compare_runtime_architectures(
@@ -150,6 +165,18 @@ def _render_runtime_evolution(repository_path):
     st.caption(
         f"Scenario: `{versions['scenario']}`"
     )
+
+    source_changes = versions.get("source_changes", [])
+    with st.expander("Source-code changes between selected commits", expanded=bool(source_changes)):
+        st.caption("These are Git source changes, not proof that the changed code executed in the selected runtime scenario.")
+        if source_changes:
+            st.dataframe(
+                [{"Change": item["status"], "File": item["path"]} for item in source_changes],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Git reports no file changes between these two commits.")
 
     # ========================================================
     # RUNTIME METRICS
