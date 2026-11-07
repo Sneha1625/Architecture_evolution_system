@@ -138,6 +138,14 @@ def _render_real_github_evolution():
                 st.session_state["github_evolution_requested_limit"] = int(commit_limit)
                 created_count = sum(bool(item["created"]) for item in results)
                 st.success(f"Requested {int(commit_limit)} commits; {len(results)} analyzed in this batch; {created_count} new snapshots.")
+                extraction_stats = [item.get("extraction", {}) for item in results if item.get("extraction")]
+                skipped_large = sum(item.get("skipped_large_files", 0) for item in extraction_stats)
+                skipped_limits = sum(item.get("skipped_total_limit_files", 0) for item in extraction_stats)
+                if skipped_large or skipped_limits:
+                    st.warning(
+                        f"Analysis continued with supported source files. "
+                        f"{skipped_large} oversized source files and {skipped_limits} files beyond the repository processing limits were skipped."
+                    )
             except Exception as exc:
                 st.error(f"Snapshot generation failed: {exc}")
 
@@ -148,6 +156,109 @@ def _render_real_github_evolution():
 
 
 _render_real_github_evolution()
+
+
+# The Architecture Graph page is snapshot-scoped: it must render the selected
+# saved snapshot, not a graph rebuilt from the repository's current HEAD.
+if section == "Architecture Evolution" and page == "Architecture Graph":
+    st.title("Architecture Graph")
+    active_url = (
+        st.session_state.get("repository_url")
+        or st.session_state.get("evolution_repo_url")
+        or st.session_state.get("github_repository_url")
+    )
+    repository_id = st.session_state.get("evolution_repository_id")
+
+    try:
+        from features.architecture_history import get_repositories, get_snapshot_list
+        from architecture_model.snapshot_loader import load_snapshot, get_snapshot_info
+        from architecture_model.github_evolution_pipeline import normalize_repository_url
+
+        if not repository_id and active_url:
+            normalized_active_url = normalize_repository_url(active_url)
+            matching_repositories = [
+                item for item in get_repositories()
+                if item.get("url") and normalize_repository_url(item["url"]) == normalized_active_url
+            ]
+            if matching_repositories:
+                repository_id = matching_repositories[0]["id"]
+
+        if not active_url or not repository_id:
+            st.info("Load a repository in the combined sidebar and generate its architecture snapshots first.")
+            st.stop()
+
+        snapshots = get_snapshot_list(repository_id)
+        if not snapshots:
+            st.info("No snapshots exist for the active combined repository yet. Use 'Generate Architecture Snapshots' in the sidebar.")
+            st.stop()
+
+        snapshot_options = {
+            f'Version {item["version"]} | {item["commit_hash"]} | ID {item["id"]}': item["id"]
+            for item in snapshots
+        }
+        selected_label = st.selectbox(
+            "Select snapshot for graph",
+            list(snapshot_options.keys()),
+            index=len(snapshot_options) - 1,
+            key="combined_architecture_graph_snapshot",
+        )
+        selected_id = snapshot_options[selected_label]
+        selected_snapshot = load_snapshot(selected_id)
+        selected_info = get_snapshot_info(selected_id)
+
+        if selected_snapshot is None:
+            st.error("The selected architecture snapshot could not be loaded.")
+            st.stop()
+
+        st.caption(
+            f'Graph generated from snapshot {selected_info.get("version", selected_snapshot.version)} '
+            f'| commit {selected_snapshot.commit_hash} | snapshot ID {selected_id}'
+        )
+        components = list(selected_snapshot.components or [])
+        relationships = list(selected_snapshot.relationships or [])
+
+        if not components:
+            st.info("This snapshot contains no architecture components.")
+        else:
+            def _graph_quote(value):
+                return str(value).replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\\n", " ")
+
+            dot = [
+                "digraph SelectedSnapshot {",
+                "  rankdir=LR;",
+                '  graph [bgcolor="transparent"];',
+                '  node [shape=box, style="rounded,filled", fillcolor="#E8F0FE", color="#5B78A6"];',
+            ]
+            node_lookup = {}
+            for component in components:
+                node_id = str(component.id or component.name)
+                node_lookup[node_id] = node_id
+                node_lookup[str(component.name)] = node_id
+                label = f"{component.name}\\n{component.layer}" if component.layer else component.name
+                dot.append(f'  "{_graph_quote(node_id)}" [label="{_graph_quote(label)}"];')
+            for relationship in relationships:
+                source = node_lookup.get(str(relationship.source), str(relationship.source))
+                target = node_lookup.get(str(relationship.target), str(relationship.target))
+                dot.append(
+                    f'  "{_graph_quote(source)}" -> "{_graph_quote(target)}" '
+                    f'[label="{_graph_quote(relationship.type)}"];'
+                )
+            dot.append("}")
+            st.graphviz_chart("\n".join(dot), use_container_width=True)
+
+        st.subheader("Snapshot Contents")
+        left, right = st.columns(2)
+        left.metric("Components", len(components))
+        right.metric("Relationships", len(relationships))
+        st.dataframe(
+            [{"Component": item.name, "Layer": item.layer, "Files": len(item.files)} for item in components],
+            use_container_width=True,
+            hide_index=True,
+        )
+    except Exception as graph_error:
+        st.error(f"Unable to render the selected snapshot graph: {graph_error}")
+    st.stop()
+
 
 # The original applications are embedded unmodified. AST adjustments below
 # remove only their second page configuration and redundant navigation widgets.

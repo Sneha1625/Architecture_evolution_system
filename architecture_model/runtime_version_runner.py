@@ -48,7 +48,7 @@ def discover_python_entrypoints(worktree_path):
     known web-server launchers and test files to avoid blocking execution.
     """
     root = Path(worktree_path).resolve()
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred = ("runtime_scenario.py", "main.py", "run.py", "cli.py", "__main__.py", "sample_project.py")
     ignored = {
         ".git", ".venv", "venv", "env", "__pycache__", "site-packages",
         "node_modules", "tests", "test", "build", "dist", ".next",
@@ -73,9 +73,9 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(marker in source for marker in server_markers):
             continue
-        # Ignore obvious Streamlit page scripts, but retain ordinary modules
-        # that merely import project utilities.
-        if "import streamlit" in source and ("st.run(" in source or "streamlit run" in source):
+        # A Streamlit UI module is not a bounded scenario: importing it
+        # does not reproduce a user's button clicks or navigation path.
+        if "import streamlit" in source or "from streamlit" in source:
             continue
         candidates.append(relative.as_posix())
     preferred_order = {name: index for index, name in enumerate(preferred)}
@@ -239,7 +239,7 @@ if execution_error:
 def validate_worktree(
     worktree_path: Path,
     scenario: str,
-) -> None:
+) -> str:
     """
     Validate the selected Git worktree and scenario.
     """
@@ -274,6 +274,7 @@ def validate_worktree(
             f"Scenario does not exist: "
             f"{scenario_path}"
         )
+    return scenario
 
 
 # ============================================================
@@ -388,7 +389,7 @@ def run_version(
         worktree_path
     ).resolve()
 
-    validate_worktree(
+    scenario = validate_worktree(
         worktree_path,
         scenario,
     )
@@ -531,7 +532,7 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
             "scenario or CLI script that exercises the application logic, then retry. "
             "Static architecture comparison remains available for these commits."
         )
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred = ("runtime_scenario.py", "main.py", "run.py", "cli.py", "__main__.py", "sample_project.py")
     preferred_order = {name: index for index, name in enumerate(preferred)}
     return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
 
@@ -583,10 +584,24 @@ def run_version_pair(
 
             v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
             v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
+            diff = subprocess.run(
+                ["git", "-C", str(repository), "diff", "--name-status", v1_commit, v2_commit],
+                capture_output=True, text=True, check=True, timeout=60,
+            )
+            source_changes = []
+            for line in diff.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    source_changes.append({
+                        "status": parts[0],
+                        "path": parts[-1],
+                        "previous_path": parts[1] if parts[0].startswith("R") and len(parts) > 2 else None,
+                    })
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
                 "scenario": scenario,
+                "source_changes": source_changes,
                 "v1_runtime": v1_runtime,
                 "v2_runtime": v2_runtime,
             }

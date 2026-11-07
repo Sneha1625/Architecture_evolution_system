@@ -219,7 +219,14 @@ def load_snapshot(
 
         for row in component_rows:
 
-            component_id = row["component_identifier"]
+            # Older databases may contain NULL component_key values.
+            # Fall back to the stable component name before the row id so
+            # snapshot comparison does not collapse every component under None.
+            component_id = (
+                row["component_identifier"]
+                or row["name"]
+                or row["id"]
+            )
 
             # ------------------------------------------------
             # Load component files
