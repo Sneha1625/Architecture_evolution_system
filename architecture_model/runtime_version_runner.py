@@ -105,6 +105,7 @@ output_file = Path(sys.argv[3]).resolve()
 sys.path.insert(0, str(worktree))
 
 calls = []
+executed_modules = set()
 total_python_calls = 0
 
 
@@ -147,14 +148,20 @@ def profiler(frame, event, arg):
     if event != "call":
         return profiler
 
+    callee_module = module_name(frame)
+
+    # Record every project module whose function actually executes,
+    # including entry-point modules that do not make a cross-file call.
+    if is_architecture_module(callee_module, frame.f_code.co_filename):
+        executed_modules.add(callee_module)
+
     caller = frame.f_back
     if caller is None:
         return profiler
 
     caller_module = module_name(caller)
-    callee_module = module_name(frame)
 
-    # Filter module names before doing filesystem checks.
+    # Keep dependency edges restricted to calls between project files.
     if not is_architecture_module(caller_module, caller.f_code.co_filename):
         return profiler
 
@@ -214,6 +221,7 @@ result = {
     "entry_point": scenario,
     "worktree": str(worktree),
     "total_profiled_calls": total_python_calls,
+    "modules": sorted(executed_modules),
     "calls": calls,
     "error": execution_error,
 }
@@ -327,6 +335,12 @@ def build_runtime_architecture(
             "entry_point",
             "",
         )
+    )
+
+    # Include all project modules that executed, even when a module
+    # did not participate in a cross-module relationship.
+    architecture.modules.update(
+        trace_data.get("modules", [])
     )
 
     for item in trace_data.get(
