@@ -384,13 +384,7 @@ def build_runtime_architecture(
 
 
 def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment_path: Path):
-    """Create an isolated interpreter and install snapshot-declared requirements."""
-    environment_path = Path(environment_path)
-    venv.EnvBuilder(with_pip=True, clear=True).create(str(environment_path))
-    interpreter = (
-        environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
-    )
-
+    """Install snapshot-declared requirements without changing the user's environment."""
     scenario_parent = (Path(worktree_path) / scenario).parent
     candidates = [
         Path(worktree_path) / "requirements.txt",
@@ -400,6 +394,17 @@ def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment
     for candidate in candidates:
         if candidate.is_file() and candidate not in requirements_files:
             requirements_files.append(candidate)
+
+    # Preserve packages already available to the active interpreter when
+    # the repository does not declare its own requirements file.
+    if not requirements_files:
+        return Path(sys.executable), []
+
+    environment_path = Path(environment_path)
+    venv.EnvBuilder(with_pip=True, clear=True).create(str(environment_path))
+    interpreter = (
+        environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    )
 
     for requirements_file in requirements_files:
         try:
