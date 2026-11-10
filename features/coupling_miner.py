@@ -11,6 +11,40 @@ from pathlib import Path
 from git import Repo, InvalidGitRepositoryError, NoSuchPathError
 
 
+IGNORED_DIRECTORIES = {
+    ".git", ".hg", ".svn", "__pycache__", ".pytest_cache",
+    ".mypy_cache", ".ruff_cache", ".tox", ".venv", "venv",
+    "env", "node_modules", "site-packages", "dist", "build",
+    "coverage", "htmlcov", ".idea", ".vscode",
+}
+
+IGNORED_SUFFIXES = {
+    ".pyc", ".pyo", ".pyd", ".so", ".dll", ".exe", ".class",
+    ".jar", ".war", ".zip", ".tar", ".gz", ".7z", ".rar",
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico",
+    ".pdf", ".db", ".sqlite", ".sqlite3", ".bin", ".dat",
+}
+
+
+def _is_relevant_file(path):
+    """Exclude generated/cache/binary artifacts from source-history mining."""
+    normalized = Path(path).as_posix()
+    parts = [part.lower() for part in Path(normalized).parts]
+
+    if any(part in IGNORED_DIRECTORIES for part in parts[:-1]):
+        return False
+
+    suffix = Path(normalized).suffix.lower()
+    if suffix in IGNORED_SUFFIXES:
+        return False
+
+    name = Path(normalized).name.lower()
+    if name.endswith((".min.js", ".min.css", ".map")):
+        return False
+
+    return True
+
+
 def mine_logical_coupling(repo_path, min_commits=2):
     """
     Analyze a Git repository's history and find files that are
@@ -32,6 +66,8 @@ def mine_logical_coupling(repo_path, min_commits=2):
         - commits_analyzed
         - files_analyzed
         - couplings
+        - ignored_root_commit: whether the initial baseline commit was excluded
+        - ignored_artifact_paths: generated/binary paths excluded from analysis
     """
 
     # ---------------------------------------------------------
@@ -68,12 +104,25 @@ def mine_logical_coupling(repo_path, min_commits=2):
     all_files = set()
 
     commits_analyzed = 0
+    ignored_artifact_paths = set()
+    ignored_root_commit = False
 
     for commit in repo.iter_commits():
 
         changed_files = set()
 
         try:
+            # -------------------------------------------------
+            # Ignore the root commit: it establishes the initial
+            # baseline rather than recording a meaningful change
+            # between two versions. Counting every baseline file
+            # as co-changed creates artificial coupling.
+            # -------------------------------------------------
+
+            if not commit.parents:
+                ignored_root_commit = True
+                continue
+
             # -------------------------------------------------
             # Normal commit
             # -------------------------------------------------
@@ -89,37 +138,17 @@ def mine_logical_coupling(repo_path, min_commits=2):
 
                     # File before the change
                     if diff.a_path:
-
-                        changed_files.add(
-                            Path(
-                                diff.a_path
-                            ).as_posix()
-                        )
+                        if _is_relevant_file(diff.a_path):
+                            changed_files.add(Path(diff.a_path).as_posix())
+                        else:
+                            ignored_artifact_paths.add(Path(diff.a_path).as_posix())
 
                     # File after the change
                     if diff.b_path:
-
-                        changed_files.add(
-                            Path(
-                                diff.b_path
-                            ).as_posix()
-                        )
-
-            # -------------------------------------------------
-            # Initial commit
-            # -------------------------------------------------
-
-            else:
-
-                for item in commit.tree.traverse():
-
-                    if item.type == "blob":
-
-                        changed_files.add(
-                            Path(
-                                item.path
-                            ).as_posix()
-                        )
+                        if _is_relevant_file(diff.b_path):
+                            changed_files.add(Path(diff.b_path).as_posix())
+                        else:
+                            ignored_artifact_paths.add(Path(diff.b_path).as_posix())
 
         except Exception:
             # Skip commits that cannot be processed.
@@ -286,4 +315,6 @@ def mine_logical_coupling(repo_path, min_commits=2):
         ),
 
         "couplings": couplings,
+        "ignored_root_commit": ignored_root_commit,
+        "ignored_artifact_paths": len(ignored_artifact_paths),
     }
