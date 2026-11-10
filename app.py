@@ -4149,20 +4149,35 @@ if page == "🔀 Logical Coupling":
 
                     else:
 
-                        for item in couplings[:20]:
+                        # Show the individual file frequencies and shared
+                        # change count used by the reference-table formula.
+                        coupling_rows = []
 
-                            st.markdown(
-                                f"""
-                                **{item.get('file_a', 'Unknown')}**
-                                ↔
-                                **{item.get('file_b', 'Unknown')}**
+                        for item in couplings[:100]:
+                            coupling_rows.append({
+                                "File A": item.get("file_a", "Unknown"),
+                                "File B": item.get("file_b", "Unknown"),
+                                "F_A (commits)": item.get("file_a_commits", 0),
+                                "F_B (commits)": item.get("file_b_commits", 0),
+                                "CC(A,B) (co-change commits)": item.get("co_change_count", 0),
+                                "min(F_A,F_B)": item.get("reference_frequency", 0),
+                                "Logical coupling (%)": item.get("coupling_score", 0),
+                            })
 
-                                - Coupling score: **{item.get('coupling_score', 0)}%**
-                                - Changed together: **{item.get('co_change_count', 0)} times**
-                                """
-                            )
+                        st.dataframe(
+                            coupling_rows,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
-                            st.divider()
+                        st.caption(
+                            "LC(A, B) = CC(A, B) / min(F_A, F_B) × 100. "
+                            "F_A and F_B count commits changing each file; "
+                            "CC(A, B) counts commits changing both files. "
+                            "A score of 100% means the less-frequently changed "
+                            "file changed together with the other file in every "
+                            "commit in which it changed."
+                        )
 
                 except Exception as e:
 
