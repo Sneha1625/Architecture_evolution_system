@@ -1794,12 +1794,12 @@ def create_animated_architecture(
         node_x.append(x)
         node_y.append(y)
 
-        node_text.append(
-            str(node)
-        )
+        node_label = G.nodes[node].get("label", str(node))
+        node_text.append(node_label)
 
         node_hover.append(
-            f"<b>{node}</b><br>"
+            f"<b>{node_label}</b><br>"
+            f"Type: {G.nodes[node].get('node_type', 'component')}<br>"
             f"Connections: {G.degree(node)}"
         )
 
@@ -1844,12 +1844,12 @@ def create_animated_architecture(
             visible_node_x.append(x)
             visible_node_y.append(y)
 
-            visible_node_text.append(
-                str(node)
-            )
+            node_label = G.nodes[node].get("label", str(node))
+            visible_node_text.append(node_label)
 
             visible_node_hover.append(
-                f"<b>{node}</b><br>"
+                f"<b>{node_label}</b><br>"
+                f"Type: {G.nodes[node].get('node_type', 'component')}<br>"
                 f"Connections: {G.degree(node)}"
             )
 
@@ -2540,17 +2540,47 @@ def architecture_snapshot_to_graph(
         [],
     )
 
+    # Keep component IDs as graph node IDs so that relationship
+    # endpoints (which are stored as component IDs) connect correctly.
+    # Add file-membership nodes so changes inside an existing component
+    # are visible when comparing different historical snapshots.
     for component in components:
 
-        name = getattr(
+        component_id = getattr(
+            component,
+            "id",
+            None,
+        ) or getattr(
+            component,
+            "name",
+            str(component),
+        )
+
+        component_name = getattr(
             component,
             "name",
             str(component),
         )
 
         G.add_node(
-            name
+            component_id,
+            label=component_name,
+            node_type="component",
         )
+
+        for file_path in getattr(component, "files", []) or []:
+
+            file_node = f"file::{str(file_path).replace(chr(92), '/')}"
+            G.add_node(
+                file_node,
+                label=str(file_path),
+                node_type="file",
+            )
+            G.add_edge(
+                component_id,
+                file_node,
+                relationship_type="contains",
+            )
 
     for relationship in relationships:
 
@@ -2567,38 +2597,21 @@ def architecture_snapshot_to_graph(
         )
 
         if source is None:
-
-            source = getattr(
-                relationship,
-                "from_component",
-                None,
-            )
+            source = getattr(relationship, "from_component", None)
 
         if target is None:
-
-            target = getattr(
-                relationship,
-                "to_component",
-                None,
-            )
+            target = getattr(relationship, "to_component", None)
 
         if source and target:
-
-            source_name = getattr(
-                source,
-                "name",
-                str(source),
-            )
-
-            target_name = getattr(
-                target,
-                "name",
-                str(target),
-            )
-
+            # Relationship endpoints are component IDs, not display names.
             G.add_edge(
-                source_name,
-                target_name,
+                source,
+                target,
+                relationship_type=getattr(
+                    relationship,
+                    "type",
+                    "depends_on",
+                ),
             )
 
     return G
