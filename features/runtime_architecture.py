@@ -119,8 +119,28 @@ def _render_runtime_evolution(repository_path):
             return
 
         except Exception as error:
-            st.error("Runtime execution comparison could not be completed.")
-            st.exception(error)
+            error_text = str(error)
+
+            if "ModuleNotFoundError" in error_text or "No module named" in error_text:
+                st.warning(
+                    "Runtime execution needs a dependency that is not available "
+                    "in the selected commit. The runtime runner now checks the "
+                    "repository and scenario requirements.txt files and installs "
+                    "declared packages in a temporary environment. If the missing "
+                    "module is still reported, add its correct package distribution "
+                    "to the applicable requirements.txt file and retry. If it is "
+                    "a project-local module, verify that the file exists in both "
+                    "selected commits and that its import path is correct."
+                )
+                st.code(error_text)
+                st.info(
+                    "Static architecture, source inventory, and commit-level "
+                    "architecture comparison remain available. Runtime metrics "
+                    "are not reported because the scenario did not complete."
+                )
+            else:
+                st.error("Runtime execution comparison could not be completed.")
+                st.exception(error)
             return
 
     # ========================================================
