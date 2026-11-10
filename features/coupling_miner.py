@@ -12,7 +12,7 @@ from git import Repo, InvalidGitRepositoryError, NoSuchPathError
 
 
 IGNORED_DIRECTORIES = {
-    ".git", ".hg", ".svn", "__pycache__", ".pytest_cache",
+    ".git", ".hg", ".svn", "__pycache__", "pycache", ".pytest_cache",
     ".mypy_cache", ".ruff_cache", ".tox", ".venv", "venv",
     "env", "node_modules", "site-packages", "dist", "build",
     "coverage", "htmlcov", ".idea", ".vscode",
