@@ -201,8 +201,6 @@ def mine_logical_coupling(repo_path, min_commits=2):
 
         # Reference-table formula:
         # LC(A, B) = CC(A, B) / min(F_A, F_B) * 100.
-        # Each file frequency counts commits in which that file changed;
-        # co_change_count counts commits in which both changed.
         reference_frequency = min(
             file_a_commits,
             file_b_commits,
@@ -215,8 +213,6 @@ def mine_logical_coupling(repo_path, min_commits=2):
             co_change_count / reference_frequency
         ) * 100.0
 
-        # Guard against any unexpected duplicate/merge-diff counting.
-        # A pair cannot co-change in more commits than either file changed.
         coupling_score = min(100.0, coupling_score)
 
         couplings.append(
