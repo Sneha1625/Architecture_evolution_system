@@ -253,6 +253,10 @@ def mine_logical_coupling(repo_path, min_commits=2):
                 "file_b_commits": (
                     file_b_commits
                 ),
+
+                "reference_frequency": (
+                    denominator
+                ),
             }
         )
 
