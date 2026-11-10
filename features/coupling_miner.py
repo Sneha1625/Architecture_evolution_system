@@ -199,20 +199,25 @@ def mine_logical_coupling(repo_path, min_commits=2):
             0
         )
 
-        # Jaccard co-change score: shared change events divided by
-        # commits that changed either file. Unlike min(file counts), this
-        # does not inflate pairs to 100% merely because the less-frequent
-        # file always changes alongside the other file.
-        union_count = (
-            file_a_commits + file_b_commits - co_change_count
+        # Reference-table formula:
+        # LC(A, B) = CC(A, B) / min(F_A, F_B) * 100.
+        # Each file frequency counts commits in which that file changed;
+        # co_change_count counts commits in which both changed.
+        reference_frequency = min(
+            file_a_commits,
+            file_b_commits,
         )
 
-        if union_count <= 0:
+        if reference_frequency <= 0:
             continue
 
         coupling_score = (
-            co_change_count / union_count
+            co_change_count / reference_frequency
         ) * 100.0
+
+        # Guard against any unexpected duplicate/merge-diff counting.
+        # A pair cannot co-change in more commits than either file changed.
+        coupling_score = min(100.0, coupling_score)
 
         couplings.append(
             {
@@ -235,6 +240,10 @@ def mine_logical_coupling(repo_path, min_commits=2):
 
                 "file_b_commits": (
                     file_b_commits
+                ),
+
+                "reference_frequency": (
+                    reference_frequency
                 ),
             }
         )
