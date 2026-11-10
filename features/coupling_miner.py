@@ -199,37 +199,20 @@ def mine_logical_coupling(repo_path, min_commits=2):
             0
         )
 
-        # Use the less frequently changed file as denominator.
-        denominator = min(
-            file_a_commits,
-            file_b_commits
+        # Jaccard co-change score: shared change events divided by
+        # commits that changed either file. Unlike min(file counts), this
+        # does not inflate pairs to 100% merely because the less-frequent
+        # file always changes alongside the other file.
+        union_count = (
+            file_a_commits + file_b_commits - co_change_count
         )
 
-        if denominator == 0:
+        if union_count <= 0:
             continue
 
-        # -----------------------------------------------------
-        # Coupling score
-        # -----------------------------------------------------
-        #
-        # Example:
-        #
-        # analyzer.py changed in 3 commits
-        # parser.py changed in 3 commits
-        # changed together in 3 commits
-        #
-        # score = 3 / 3 * 100 = 100%
-        # -----------------------------------------------------
-
         coupling_score = (
-            co_change_count
-            / denominator
-        ) * 100
-
-        coupling_score = min(
-            coupling_score,
-            100.0
-        )
+            co_change_count / union_count
+        ) * 100.0
 
         couplings.append(
             {
