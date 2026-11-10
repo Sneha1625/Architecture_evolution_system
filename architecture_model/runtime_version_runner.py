@@ -19,6 +19,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import venv
 from pathlib import Path
 
 from architecture_model.runtime_model import (
@@ -382,6 +383,50 @@ def build_runtime_architecture(
     return architecture
 
 
+def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment_path: Path):
+    """Create an isolated interpreter and install snapshot-declared requirements."""
+    environment_path = Path(environment_path)
+    venv.EnvBuilder(with_pip=True, clear=True).create(str(environment_path))
+    interpreter = (
+        environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    )
+
+    scenario_parent = (Path(worktree_path) / scenario).parent
+    candidates = [
+        Path(worktree_path) / "requirements.txt",
+        scenario_parent / "requirements.txt",
+    ]
+    requirements_files = []
+    for candidate in candidates:
+        if candidate.is_file() and candidate not in requirements_files:
+            requirements_files.append(candidate)
+
+    for requirements_file in requirements_files:
+        try:
+            subprocess.run(
+                [
+                    str(interpreter), "-m", "pip", "install",
+                    "--disable-pip-version-check", "-r", str(requirements_file),
+                ],
+                cwd=str(worktree_path),
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=240,
+            )
+        except subprocess.CalledProcessError as error:
+            details = (error.stderr or error.stdout or str(error))[-5000:]
+            raise RuntimeError(
+                f"Dependency installation failed for {requirements_file}:\\n{details}"
+            ) from error
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                f"Dependency installation timed out for {requirements_file}."
+            ) from error
+
+    return interpreter, requirements_files
+
+
 # ============================================================
 # RUN ONE VERSION
 # ============================================================
@@ -424,17 +469,24 @@ def run_version(
             temporary_directory
             / "runtime_trace.json"
         )
+        environment_path = temporary_directory / "python_environment"
 
         tracer_file.write_text(
             TRACER_SCRIPT,
             encoding="utf-8",
         )
 
+        interpreter, requirements_files = _prepare_runtime_interpreter(
+            worktree_path,
+            scenario,
+            environment_path,
+        )
+
         try:
 
             process = subprocess.run(
                 [
-                    sys.executable,
+                    str(interpreter),
                     str(tracer_file),
                     str(worktree_path),
                     scenario,
@@ -496,6 +548,17 @@ def run_version(
                 "\n\n"
                 f"STDERR:\n"
                 f"{process.stderr}"
+                + (
+                    "\nDependencies installed from: "
+                    + ", ".join(str(item.relative_to(worktree_path)) for item in requirements_files)
+                    if requirements_files
+                    else (
+                        "\nNo requirements.txt was found at the repository root "
+                        "or scenario directory. Add the missing dependency to a "
+                        "requirements.txt file and retry. Verify the distribution "
+                        "that provides the missing 'paddle' import."
+                    )
+                )
             )
 
         architecture = (
