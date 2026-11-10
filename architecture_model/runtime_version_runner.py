@@ -550,6 +550,25 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
     return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
 
 
+def _runtime_metrics(architecture):
+    """Return comparable measured metrics for one executed Git version."""
+    return {
+        "modules": architecture.get_module_count(),
+        "relationships": architecture.get_relationship_count(),
+        "total_calls": architecture.total_calls,
+    }
+
+
+def _runtime_metric_deltas(v1_runtime, v2_runtime):
+    """Return V2 minus V1 runtime metric changes."""
+    v1 = _runtime_metrics(v1_runtime)
+    v2 = _runtime_metrics(v2_runtime)
+    return {
+        key: v2[key] - v1[key]
+        for key in v1
+    }
+
+
 def run_version_pair(
     repository_path,
     v1_commit: str,
@@ -603,6 +622,12 @@ def run_version_pair(
                 "scenario": scenario,
                 "v1_runtime": v1_runtime,
                 "v2_runtime": v2_runtime,
+                "v1_metrics": _runtime_metrics(v1_runtime),
+                "v2_metrics": _runtime_metrics(v2_runtime),
+                "runtime_metric_deltas": _runtime_metric_deltas(
+                    v1_runtime,
+                    v2_runtime,
+                ),
             }
         finally:
             for path in reversed(added):
@@ -697,6 +722,12 @@ def run_version_pair(
         "scenario": scenario,
         "v1_runtime": v1_runtime,
         "v2_runtime": v2_runtime,
+        "v1_metrics": _runtime_metrics(v1_runtime),
+        "v2_metrics": _runtime_metrics(v2_runtime),
+        "runtime_metric_deltas": _runtime_metric_deltas(
+            v1_runtime,
+            v2_runtime,
+        ),
     }
 
 
