@@ -4149,20 +4149,32 @@ if page == "🔀 Logical Coupling":
 
                     else:
 
-                        for item in couplings[:20]:
+                        # Display the same evidence fields used in the
+                        # logical-coupling calculation and paper table.
+                        coupling_rows = []
 
-                            st.markdown(
-                                f"""
-                                **{item.get('file_a', 'Unknown')}**
-                                ↔
-                                **{item.get('file_b', 'Unknown')}**
+                        for item in couplings[:100]:
+                            coupling_rows.append({
+                                "File A": item.get("file_a", "Unknown"),
+                                "File B": item.get("file_b", "Unknown"),
+                                "File A commits (F_A)": item.get("file_a_commits", 0),
+                                "File B commits (F_B)": item.get("file_b_commits", 0),
+                                "Co-change commits CC(A,B)": item.get("co_change_count", 0),
+                                "Reference frequency min(F_A,F_B)": item.get("reference_frequency", 0),
+                                "Logical coupling (%)": item.get("coupling_score", 0),
+                            })
 
-                                - Coupling score: **{item.get('coupling_score', 0)}%**
-                                - Changed together: **{item.get('co_change_count', 0)} times**
-                                """
-                            )
+                        st.dataframe(
+                            coupling_rows,
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
-                            st.divider()
+                        st.caption(
+                            "LC(A, B) = CC(A, B) / min(F_A, F_B) × 100. "
+                            "F_A and F_B are the individual commit frequencies; "
+                            "CC(A, B) is the number of commits in which both files changed."
+                        )
 
                 except Exception as e:
 
