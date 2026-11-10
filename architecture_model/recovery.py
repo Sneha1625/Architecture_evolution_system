@@ -465,8 +465,16 @@ def recover_architecture(
         )
     }
 
+    # Give every historical snapshot a commit-derived version label.
+    # A fixed "1.0" made distinct Git revisions appear to be the same version.
+    version_label = (
+        f"commit-{str(commit_hash)[:7]}"
+        if commit_hash and commit_hash != "unknown"
+        else "local"
+    )
+
     snapshot = ArchitectureSnapshot(
-        version="1.0",
+        version=version_label,
         commit_hash=commit_hash,
         components=components,
         relationships=relationships,
