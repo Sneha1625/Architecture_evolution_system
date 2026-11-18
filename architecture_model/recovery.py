@@ -188,7 +188,13 @@ def _import_targets(imported: str, language: str) -> List[str]:
     elif lang == "rust":
         match = re.search(r"\\b(?:use|mod)\\s+([\\w:]+)", raw)
         if match:
-            add(match.group(1))
+            rust_path = match.group(1)
+            add(rust_path)
+            # In "use crate::module::Type", the source file belongs to
+            # module.rs/mod.rs rather than a file named after the type.
+            pieces = rust_path.split("::")
+            if len(pieces) > 1:
+                add(".".join(pieces[:-1]))
     elif lang == "php":
         match = re.search(r"\\b(?:use|require(?:_once)?|include(?:_once)?)\\s+([\\w\\\\./-]+)", raw, re.I)
         if match:
