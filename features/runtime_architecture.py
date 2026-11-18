@@ -42,6 +42,12 @@ def _render_runtime_evolution(repository_path):
         "Choose any two commits from the repository selected in app_combined. "
         "The comparison below will use only those exact commits."
     )
+    st.info(
+        "Runtime V1/V2 execution tracing currently supports Python scenarios. "
+        "Static architecture recovery supports all 11 supported language families. "
+        "Runtime traces for other languages are not generated until their "
+        "language-specific execution adapters are implemented."
+    )
 
     try:
         commits = list_repository_commits(repository_path)
