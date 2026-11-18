@@ -8,6 +8,7 @@ on:
       - "architecture_model/model.py"
       - "src/parser.py"
       - "architecture_model/runtime_version_runner.py"
+      - "features/runtime_architecture.py"
       - "tests/test_multilanguage_recovery.py"
       - "tests/test_runtime_version_runner.py"
       - ".github/workflows/multilanguage-recovery.yml"
