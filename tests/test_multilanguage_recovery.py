@@ -167,3 +167,29 @@ def test_arbitrary_repository_layout_groups_by_package():
     edges = get_edges(results)
     assert ("component_controllers", "component_services") in edges
 
+
+def test_parser_smoke_tests_for_all_supported_languages(tmp_path):
+    from src.parser import parse_file
+
+    samples = {
+        "python": ("sample.py", "def main():\n    return 1\n"),
+        "javascript": ("sample.js", "function main() { return 1; }\n"),
+        "typescript": ("sample.ts", "function main(): number { return 1; }\n"),
+        "tsx": ("sample.tsx", "export const App = () => <div />;\n"),
+        "java": ("Sample.java", "class Sample { void main() {} }\n"),
+        "c": ("sample.c", "int main(void) { return 1; }\n"),
+        "cpp": ("sample.cpp", "class Sample { public: void run() {} };\n"),
+        "csharp": ("Sample.cs", "class Sample { public void Run() {} }\n"),
+        "go": ("sample.go", "package main\nfunc main() {}\n"),
+        "rust": ("sample.rs", "fn main() {}\n"),
+        "php": ("sample.php", "<?php function main() { return 1; }\n"),
+        "ruby": ("sample.rb", "def main\n  1\nend\n"),
+    }
+
+    for expected_language, (filename, source) in samples.items():
+        source_path = tmp_path / filename
+        source_path.write_text(source, encoding="utf-8")
+        parsed = parse_file(str(source_path))
+        assert parsed["language"] == expected_language
+        assert "error" not in parsed, f"{expected_language}: {parsed.get('error')}"
+
