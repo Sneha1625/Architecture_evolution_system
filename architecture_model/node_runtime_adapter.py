@@ -16,7 +16,7 @@ from urllib.parse import unquote, urlparse
 from architecture_model.runtime_model import RuntimeArchitecture, RuntimeCall
 
 
-NODE_EXTENSIONS = {".js", ".mjs", ".cjs"}
+NODE_EXTENSIONS = {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}
 
 
 def discover_node_entrypoints(worktree_path):
@@ -27,6 +27,9 @@ def discover_node_entrypoints(worktree_path):
         "index.js", "sample_project.js",
         "runtime_scenario.mjs", "main.mjs", "index.mjs",
         "runtime_scenario.cjs", "main.cjs", "index.cjs",
+        "runtime_scenario.ts", "main.ts", "index.ts",
+        "runtime_scenario.mts", "main.mts", "index.mts",
+        "runtime_scenario.cts", "main.cts", "index.cts",
     )
     ignored = {
         ".git", "node_modules", "vendor", "dist", "build",
@@ -100,10 +103,16 @@ def run_node_version(worktree_path, scenario, timeout=300):
         profile_dir.mkdir()
         env = os.environ.copy()
         env["NODE_V8_COVERAGE"] = str(coverage_dir)
-        command = [
-            node, "--cpu-prof", "--cpu-prof-interval=100",
+        command = [node]
+        if scenario_path.suffix.lower() in {".ts", ".mts", ".cts"}:
+            # Node 22+ can strip erasable TypeScript syntax without a build step.
+            # Projects requiring tsconfig transforms or custom loaders must use
+            # their own compiled JavaScript entry point instead.
+            command.append("--experimental-strip-types")
+        command.extend([
+            "--cpu-prof", "--cpu-prof-interval=100",
             f"--cpu-prof-dir={profile_dir}", str(scenario_path),
-        ]
+        ])
         try:
             process = subprocess.run(
                 command, cwd=str(root), env=env, capture_output=True,
