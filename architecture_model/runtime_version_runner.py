@@ -42,23 +42,41 @@ DEFAULT_SCENARIO = ""
 
 
 def discover_python_entrypoints(worktree_path):
-    """Find shared, bounded Python scripts for runtime tracing.
+    """Find likely bounded Python execution scenarios without guessing.
 
-    Do not restrict discovery to conventional filenames: many repositories
-    expose their executable logic through feature or utility modules. Exclude
-    known web-server launchers and test files to avoid blocking execution.
+    A repository may contain many importable modules (settings, config,
+    models, helpers). Importing one of those is not equivalent to exercising
+    the application. Prefer explicit executable entry points and scripts
+    with clear top-level execution; never fall back to an arbitrary module.
     """
+    import ast
+
     root = Path(worktree_path).resolve()
-    preferred = ("runtime_scenario.py", "main.py", "cli.py", "run.py", "__main__.py", "sample_project.py")
+    preferred = {
+        "runtime_scenario.py": 0,
+        "main.py": 1,
+        "cli.py": 2,
+        "run.py": 3,
+        "__main__.py": 4,
+        "manage.py": 5,
+        "sample_project.py": 6,
+    }
     ignored = {
         ".git", ".venv", "venv", "env", "__pycache__", "site-packages",
         "node_modules", "tests", "test", "build", "dist", ".next",
+        "migrations", "vendor",
+    }
+    non_entry_names = {
+        "__init__.py", "config.py", "settings.py", "constants.py",
+        "models.py", "schemas.py", "serializers.py", "admin.py",
+        "apps.py", "wsgi.py", "asgi.py",
     }
     server_markers = (
-        "streamlit.run", "fastapi(", "flask(", "gradio.launch(",
-        "uvicorn.run(", "app.run(", "st.run(",
+        "streamlit.run", "uvicorn.run(", "hypercorn.run(",
+        "gradio.launch(", "app.run(", "runserver(",
     )
     candidates = []
+
     for path in root.rglob("*.py"):
         try:
             relative = path.relative_to(root)
@@ -68,31 +86,74 @@ def discover_python_entrypoints(worktree_path):
             continue
         if path.name.startswith("test_") or path.name.endswith("_test.py"):
             continue
+        if path.name.lower() in non_entry_names:
+            continue
+
         try:
-            source = path.read_text(encoding="utf-8", errors="ignore")[:160000].lower()
-        except OSError:
+            source = path.read_text(encoding="utf-8", errors="ignore")
+            if len(source) > 500000:
+                continue
+            tree = ast.parse(source, filename=str(path))
+        except (OSError, SyntaxError, ValueError):
             continue
-        if any(marker in source for marker in server_markers):
+
+        lowered = source.lower()
+        # Never start a long-running development server as an automated
+        # comparison scenario. Framework modules remain part of static analysis.
+        if any(marker in lowered for marker in server_markers):
             continue
-        # A dashboard/server module is not a bounded runtime scenario:
-        # executing it would start a long-running UI/server or capture only
-        # framework startup instead of the application's business logic.
-        framework_imports = (
-            "import streamlit", "from streamlit",
-            "import flask", "from flask",
-            "import fastapi", "from fastapi",
-            "import gradio", "from gradio",
-        )
-        if any(marker in source for marker in framework_imports):
+
+        has_main_guard = False
+        has_cli_signal = False
+        has_direct_main_call = False
+        has_top_level_work = False
+
+        for node in tree.body:
+            if isinstance(node, ast.If):
+                test = ast.dump(node.test, include_attributes=False)
+                if "__name__" in test and "__main__" in test:
+                    has_main_guard = True
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                continue
+            has_top_level_work = True
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                name = func.id if isinstance(func, ast.Name) else (
+                    func.attr if isinstance(func, ast.Attribute) else ""
+                )
+                if name in {"ArgumentParser", "parse_args", "click", "typer"}:
+                    has_cli_signal = True
+                if name == "main":
+                    has_direct_main_call = True
+
+        filename_rank = preferred.get(path.name.lower(), 99)
+        # A named entry point is useful only if it contains executable work.
+        # For other files require explicit CLI/main evidence or a meaningful
+        # top-level script; this prevents config.py-like files being selected.
+        if not (has_main_guard or has_cli_signal or has_direct_main_call or has_top_level_work):
             continue
-        candidates.append(relative.as_posix())
-    preferred_order = {name: index for index, name in enumerate(preferred)}
-    candidates.sort(key=lambda value: (
-        preferred_order.get(Path(value).name, len(preferred)),
-        len(Path(value).parts),
-        value.lower(),
-    ))
-    return candidates[:500]
+        if filename_rank == 99 and not (has_main_guard or has_cli_signal or has_direct_main_call):
+            continue
+
+        score = (
+            100 if has_main_guard else 0
+        ) + (
+            35 if has_cli_signal else 0
+        ) + (
+            25 if has_direct_main_call else 0
+        ) + (
+            20 if filename_rank < 99 else 0
+        ) - min(len(relative.parts), 10)
+        candidates.append((score, filename_rank, relative.as_posix()))
+
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2].lower()))
+    return [item[2] for item in candidates[:100]]
 
 # ============================================================
 # CHILD-PROCESS TRACER
