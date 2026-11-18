@@ -125,3 +125,25 @@ def test_javascript_v1_v2_runtime_comparison_uses_node_adapter(tmp_path):
     assert "helper.js" in result["v2_runtime"].modules
     assert result["v1_metrics"]["modules"] >= 2
     assert result["v2_metrics"]["modules"] >= 2
+
+
+def test_typescript_runtime_adapter_detects_executed_modules(tmp_path):
+    (tmp_path / "main.ts").write_text(
+        "import { calculate } from './helper.ts';\n"
+        "console.log(calculate());\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "helper.ts").write_text(
+        "export function calculate(): number {\n"
+        "  let total = 0;\n"
+        "  for (let i = 0; i < 100000; i++) total += i;\n"
+        "  return total;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    architecture = run_node_version(tmp_path, "main.ts", timeout=30)
+
+    assert "main.ts" in architecture.modules
+    assert "helper.ts" in architecture.modules
+    assert architecture.get_module_count() >= 2
