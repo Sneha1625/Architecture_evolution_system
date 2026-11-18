@@ -74,9 +74,16 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(marker in source for marker in server_markers):
             continue
-        # Ignore obvious Streamlit page scripts, but retain ordinary modules
-        # that merely import project utilities.
-        if "import streamlit" in source and ("st.run(" in source or "streamlit run" in source):
+        # A dashboard/server module is not a bounded runtime scenario:
+        # executing it would start a long-running UI/server or capture only
+        # framework startup instead of the application's business logic.
+        framework_imports = (
+            "import streamlit", "from streamlit",
+            "import flask", "from flask",
+            "import fastapi", "from fastapi",
+            "import gradio", "from gradio",
+        )
+        if any(marker in source for marker in framework_imports):
             continue
         candidates.append(relative.as_posix())
     preferred_order = {name: index for index, name in enumerate(preferred)}
