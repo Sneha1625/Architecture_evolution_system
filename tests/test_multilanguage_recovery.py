@@ -223,3 +223,43 @@ def test_parser_skips_virtual_environments_and_vendor_folders(tmp_path):
     parsed = parse_folder(str(tmp_path))
     assert [item["file"].split("/")[-1] for item in parsed] == ["app.py"]
 
+
+def test_flask_repository_source_to_architecture_integration(tmp_path):
+    from src.parser import parse_folder
+
+    sources = {
+        "app.py": (
+            "from flask import Flask, request, render_template\n"
+            "from sentiment_analysis import get_sentiment\n"
+            "app = Flask(__name__)\n"
+            "@app.route('/', methods=['GET', 'POST'])\n"
+            "def index():\n"
+            "    return render_template('index.html')\n"
+        ),
+        "config.py": (
+            "import os\n"
+            "from dotenv import load_dotenv\n"
+            "load_dotenv()\n"
+            "API_KEY = os.getenv('API_KEY')\n"
+        ),
+        "sentiment_analysis.py": (
+            "import json\n"
+            "from config import API_KEY\n"
+            "def get_sentiment(text):\n"
+            "    return API_KEY\n"
+        ),
+    }
+    for filename, source in sources.items():
+        (tmp_path / filename).write_text(source, encoding="utf-8")
+
+    parsed = parse_folder(str(tmp_path))
+    snapshot = recover_architecture(parsed)
+    component_names = {component.name.lower(): component.id for component in snapshot.components}
+    edges = {(edge.source, edge.target) for edge in snapshot.relationships}
+
+    assert "app" in component_names
+    assert "config" in component_names
+    assert "sentiment analysis" in component_names
+    assert (component_names["app"], component_names["sentiment analysis"]) in edges
+    assert (component_names["sentiment analysis"], component_names["config"]) in edges
+
