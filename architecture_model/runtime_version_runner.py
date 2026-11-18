@@ -720,6 +720,56 @@ def list_common_python_entrypoints(repository_path, v1_commit: str, v2_commit: s
             )
 
 
+def discover_runtime_entrypoints(worktree_path):
+    """Discover bounded scenarios for runtime adapters available in this build."""
+    candidates = discover_python_entrypoints(worktree_path)
+    try:
+        from architecture_model.node_runtime_adapter import discover_node_entrypoints
+        candidates.extend(discover_node_entrypoints(worktree_path))
+    except ImportError:
+        pass
+    return sorted(set(candidates), key=lambda value: (
+        0 if Path(value).suffix.lower() == ".py" else 1,
+        value.lower(),
+    ))
+
+
+def list_common_runtime_entrypoints(repository_path, v1_commit: str, v2_commit: str):
+    """List same-language runnable scenarios present in both selected commits."""
+    repository = Path(repository_path).resolve()
+    if not repository.is_dir() or not (repository / ".git").exists():
+        raise ValueError(f"Selected repository is not a Git checkout: {repository}")
+
+    with tempfile.TemporaryDirectory(prefix="architecture_scenario_discovery_") as temp:
+        root = Path(temp)
+        v1_path, v2_path = root / "version_1", root / "version_2"
+        added = []
+        try:
+            for path, commit in ((v1_path, v1_commit), (v2_path, v2_commit)):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "add", "--detach", str(path), commit],
+                    capture_output=True, text=True, check=True, timeout=120,
+                )
+                added.append(path)
+            common = set(discover_runtime_entrypoints(v1_path)) & set(discover_runtime_entrypoints(v2_path))
+            return sorted(common, key=lambda value: (
+                0 if Path(value).name.lower() in {"runtime_scenario.py", "runtime_scenario.js"} else 1,
+                0 if Path(value).suffix.lower() == ".py" else 1,
+                len(Path(value).parts),
+                value.lower(),
+            ))
+        finally:
+            for path in reversed(added):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "remove", "--force", str(path)],
+                    capture_output=True, text=True, timeout=60,
+                )
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "prune"],
+                capture_output=True, text=True, timeout=30,
+            )
+
+
 def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
     """Choose a Python entry point present in both selected commit snapshots."""
     v1_candidates = set(discover_python_entrypoints(v1_path))
@@ -802,8 +852,13 @@ def run_version_pair(
             validate_worktree(v1_path, scenario)
             validate_worktree(v2_path, scenario)
 
-            v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
-            v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
+            if Path(scenario).suffix.lower() in {".js", ".mjs", ".cjs"}:
+                from architecture_model.node_runtime_adapter import run_node_version
+                v1_runtime = run_node_version(v1_path, scenario=scenario, timeout=timeout)
+                v2_runtime = run_node_version(v2_path, scenario=scenario, timeout=timeout)
+            else:
+                v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
+                v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
