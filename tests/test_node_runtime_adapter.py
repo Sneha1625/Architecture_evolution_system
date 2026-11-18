@@ -76,16 +76,16 @@ def test_javascript_v1_v2_runtime_comparison_uses_node_adapter(tmp_path):
     git("config", "user.email", "node-runtime@example.com")
 
     (repository / "main.js").write_text(
-        "const { calculate } = require('./helper');\\n"
-        "console.log(calculate());\\n",
+        "const { calculate } = require('./helper');\n"
+        "console.log(calculate());\n",
         encoding="utf-8",
     )
     (repository / "helper.js").write_text(
-        "exports.calculate = function calculate() {\\n"
-        "  let total = 0;\\n"
-        "  for (let i = 0; i < 100000; i++) total += i;\\n"
-        "  return total;\\n"
-        "};\\n",
+        "exports.calculate = function calculate() {\n"
+        "  let total = 0;\n"
+        "  for (let i = 0; i < 100000; i++) total += i;\n"
+        "  return total;\n"
+        "};\n",
         encoding="utf-8",
     )
     git("add", ".")
@@ -96,11 +96,11 @@ def test_javascript_v1_v2_runtime_comparison_uses_node_adapter(tmp_path):
     ).stdout.strip()
 
     (repository / "helper.js").write_text(
-        "exports.calculate = function calculate() {\\n"
-        "  let total = 1;\\n"
-        "  for (let i = 0; i < 100000; i++) total += i;\\n"
-        "  return total;\\n"
-        "};\\n",
+        "exports.calculate = function calculate() {\n"
+        "  let total = 1;\n"
+        "  for (let i = 0; i < 100000; i++) total += i;\n"
+        "  return total;\n"
+        "};\n",
         encoding="utf-8",
     )
     git("add", ".")
