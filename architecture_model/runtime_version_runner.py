@@ -852,7 +852,7 @@ def run_version_pair(
             validate_worktree(v1_path, scenario)
             validate_worktree(v2_path, scenario)
 
-            if Path(scenario).suffix.lower() in {".js", ".mjs", ".cjs"}:
+            if Path(scenario).suffix.lower() in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
                 from architecture_model.node_runtime_adapter import run_node_version
                 v1_runtime = run_node_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_node_version(v2_path, scenario=scenario, timeout=timeout)
