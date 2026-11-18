@@ -208,3 +208,18 @@ def test_flat_flask_repository_layout():
     assert ("component_app", "component_sentiment_analysis") in edges
     assert ("component_sentiment_analysis", "component_config") in edges
 
+
+def test_parser_skips_virtual_environments_and_vendor_folders(tmp_path):
+    from src.parser import parse_folder
+
+    (tmp_path / "app.py").write_text("def main():\n    return 1\n", encoding="utf-8")
+    dependency_file = tmp_path / "venv" / "Lib" / "site-packages" / "dependency.py"
+    dependency_file.parent.mkdir(parents=True)
+    dependency_file.write_text("def dependency():\n    return 1\n", encoding="utf-8")
+    vendor_file = tmp_path / "vendor" / "library" / "library.py"
+    vendor_file.parent.mkdir(parents=True)
+    vendor_file.write_text("def vendored():\n    return 1\n", encoding="utf-8")
+
+    parsed = parse_folder(str(tmp_path))
+    assert [item["file"].split("/")[-1] for item in parsed] == ["app.py"]
+
