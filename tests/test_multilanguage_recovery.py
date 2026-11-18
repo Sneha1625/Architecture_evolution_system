@@ -193,3 +193,14 @@ def test_parser_smoke_tests_for_all_supported_languages(tmp_path):
         assert parsed["language"] == expected_language
         assert "error" not in parsed, f"{expected_language}: {parsed.get('error')}"
 
+
+def test_flat_flask_repository_layout():
+    results = [
+        make_file("app.py", "python", ["flask", "sentiment_analysis"]),
+        make_file("config.py", "python", ["os", "dotenv"]),
+        make_file("sentiment_analysis.py", "python", ["urllib.request", "json", "ssl", "config"]),
+    ]
+    edges = get_edges(results)
+    assert ("component_app", "component_sentiment_analysis") in edges
+    assert ("component_sentiment_analysis", "component_config") in edges
+
