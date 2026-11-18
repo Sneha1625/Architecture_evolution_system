@@ -192,6 +192,10 @@ def test_parser_smoke_tests_for_all_supported_languages(tmp_path):
         parsed = parse_file(str(source_path))
         assert parsed["language"] == expected_language
         assert "error" not in parsed, f"{expected_language}: {parsed.get('error')}"
+        method_count = sum(len(item.get("methods", [])) for item in parsed.get("classes", []))
+        assert parsed.get("functions") or method_count or parsed.get("classes"), (
+            f"{expected_language}: no program symbols were extracted"
+        )
 
 
 def test_flat_flask_repository_layout():
