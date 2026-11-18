@@ -145,7 +145,7 @@ def test_rust_module_import():
 
 def test_php_namespace_import():
     results = [
-        make_file("src/Alpha/App.php", "php", [r"use Beta\\User;"]),
+        make_file("src/Alpha/App.php", "php", [r"use Beta\User;"]),
         make_file("src/Beta/User.php", "php", []),
     ]
     assert ("component_alpha", "component_beta") in get_edges(results)
