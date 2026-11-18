@@ -700,66 +700,69 @@ def _render_repository_architecture(repository_path):
     st.markdown("#### Languages detected")
     st.bar_chart(dict(language_counts))
 
-    path_to_module = {}
-    for item in parsed_files:
-        rel = Path(item["file"]).resolve().relative_to(root).as_posix()
-        path_to_module[rel] = rel
-    relationships = set()
-    for item in parsed_files:
-        source = Path(item["file"]).resolve()
-        source_rel = source.relative_to(root).as_posix()
-        source_dir = source.parent
-        for imported in item.get("imports", []):
-            raw = str(imported).strip().replace("\\", "/")
-            raw = raw.removeprefix("from ").split(" import ")[0].strip().strip("'").strip('"')
-            raw = raw.removesuffix(";")
-            candidates = [raw.replace(".", "/"), raw]
-            target_rel = None
-            for candidate in candidates:
-                candidate = candidate.lstrip("/")
-                for suffix in ("", ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go", ".rs", ".php", ".rb", ".cs", ".c", ".cpp"):
-                    possible = (source_dir / (candidate + suffix)).resolve()
-                    try:
-                        rel = possible.relative_to(root).as_posix()
-                    except ValueError:
-                        continue
-                    if rel in path_to_module and rel != source_rel:
-                        target_rel = rel
-                        break
-                if target_rel:
-                    break
-            if target_rel:
-                relationships.add((source_rel, target_rel, "import"))
+    from architecture_model.recovery import recover_architecture
 
-    st.markdown("#### Inferred module relationships")
-    if relationships:
-        st.dataframe([{ "Source file": s, "Target file": t, "Evidence": kind } for s, t, kind in sorted(relationships)], use_container_width=True, hide_index=True)
+    snapshot = recover_architecture(parsed_files)
+    component_by_id = {component.id: component for component in snapshot.components}
+
+    st.markdown("#### Recovered architecture components")
+    component_rows = [
+        {
+            "Component": component.name,
+            "Layer": component.layer,
+            "Source files": len(component.files),
+            "Dependencies": len(component.dependencies),
+            "Responsibility": component.responsibility,
+        }
+        for component in snapshot.components
+    ]
+    if component_rows:
+        st.dataframe(component_rows, use_container_width=True, hide_index=True)
     else:
-        st.info("No internal file-to-file import relationships were resolved. The parsed file and function inventory is still available below.")
+        st.info("No architecture components could be recovered from the parsed source files.")
 
-    # Restore the architecture dependency graph alongside the relationship table.
+    st.markdown("#### Internal component dependencies")
+    relationship_rows = [
+        {
+            "Source component": component_by_id[edge.source].name,
+            "Target component": component_by_id[edge.target].name,
+            "Relationship": edge.type,
+            "Evidence": "Resolved source import",
+        }
+        for edge in snapshot.relationships
+        if edge.source in component_by_id and edge.target in component_by_id
+    ]
+    if relationship_rows:
+        st.dataframe(relationship_rows, use_container_width=True, hide_index=True)
+    else:
+        st.info("No internal component imports were resolved. External libraries are excluded from the internal architecture graph.")
+
     st.markdown("#### Architecture dependency graph")
-    graph_nodes = sorted(path_to_module)
-    def _dot_quote(value):
-        return str(value).replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\\n", " ")
-    dot_lines = ["digraph Architecture {", "  rankdir=LR;", '  graph [bgcolor="transparent"];', '  node [shape=box, style="rounded,filled", fillcolor="#E8F0FE", color="#5B78A6"];']
-    for node in graph_nodes:
-        dot_lines.append(f'  "{_dot_quote(node)}";')
-    for source_name, target_name, _kind in sorted(relationships):
-        dot_lines.append(f'  "{_dot_quote(source_name)}" -> "{_dot_quote(target_name)}";')
+    dot_lines = [
+        "digraph Architecture {",
+        "  rankdir=LR;",
+        '  graph [bgcolor="transparent"];',
+        '  node [shape=box, style="rounded,filled", fillcolor="#E8F0FE", color="#5B78A6"];',
+    ]
+    for component in snapshot.components:
+        label = component.name.replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\\n", " ")
+        dot_lines.append(f'  "{component.id}" [label="{label}"];')
+    for edge in snapshot.relationships:
+        dot_lines.append(f'  "{edge.source}" -> "{edge.target}";')
     dot_lines.append("}")
     try:
-        st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
+        st.graphviz_chart("\\n".join(dot_lines), use_container_width=True)
     except Exception as graph_error:
         st.warning(f"Could not render the dependency graph: {graph_error}")
 
-    st.markdown("#### Dependencies")
+    st.markdown("#### Dependency inventory")
     dependency_rows = []
     for item in parsed_files:
         source_name = Path(item["file"]).resolve().relative_to(root).as_posix()
         for imported in item.get("imports", []):
             dependency_rows.append({
                 "Source file": source_name,
+                "Language": item.get("language", "unknown"),
                 "Imported dependency": str(imported),
             })
     if dependency_rows:
