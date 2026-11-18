@@ -266,6 +266,16 @@ scenario_path = worktree / scenario
 if not scenario_path.exists():
     raise FileNotFoundError(f"Scenario not found: {scenario_path}")
 
+# A Python entry-point script often performs its work at module scope.
+# sys.setprofile emits function-call events, not module-execution events, so
+# explicitly include the selected project entry point in the observed modules.
+try:
+    relative_entrypoint = scenario_path.resolve().relative_to(worktree)
+    entrypoint_module = ".".join(relative_entrypoint.with_suffix("").parts) or "__main__"
+except (ValueError, OSError, RuntimeError):
+    entrypoint_module = "__main__"
+executed_modules.add(entrypoint_module)
+
 old_cwd = Path.cwd()
 execution_error = None
 
