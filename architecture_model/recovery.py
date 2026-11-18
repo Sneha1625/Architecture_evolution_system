@@ -274,7 +274,7 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
                 return suffix_matches[0]
             # A class/module import may identify a source file by its final segment.
             final = re.split(r"[./:]+", token)[-1].lower()
-            final = re.sub(r"\\.(py|js|jsx|mjs|cjs|ts|tsx|java|c|h|cc|cpp|cxx|hpp|hh|hxx|cs|go|rs|php|rb)$", "", final)
+            final = re.sub(r"\.(py|js|jsx|mjs|cjs|ts|tsx|java|c|h|cc|cpp|cxx|hpp|hh|hxx|cs|go|rs|php|rb)$", "", final)
             matches = stem_index.get(final, [])
             if len(matches) == 1:
                 return matches[0]
