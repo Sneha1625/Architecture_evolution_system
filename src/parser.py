@@ -45,14 +45,16 @@ FUNCTION_TYPES = {
 }
 CLASS_TYPES = {
     "class_declaration", "class_definition", "class_specifier",
-    "struct_item", "interface_declaration", "trait_item", "impl_item",
-    "enum_declaration", "enum_item", "record_declaration",
+    "struct_specifier", "union_specifier", "struct_type", "interface_type",
+    "type_spec", "struct_item", "interface_declaration", "trait_item", "impl_item",
+    "enum_specifier", "enum_declaration", "enum_item", "record_declaration",
 }
 IMPORT_TYPES = {
     "import_statement", "import_declaration", "import_from_statement",
     "using_directive", "use_declaration", "include_directive",
     "preproc_include", "package_clause", "extern_crate_declaration",
-    "require_expression",
+    "require_expression", "include_expression", "namespace_use_declaration",
+    "mod_item",
 }
 CALL_TYPES = {
     "call_expression", "call", "method_invocation", "function_call",
@@ -358,10 +360,17 @@ def _parse_tree_sitter(file_path: str, source_code: str, language: str) -> dict[
 
     # Imports: retain source-level module/import statements.
     for node in nodes:
-        if node.type in IMPORT_TYPES or "import" in node.type or node.type in {"use_declaration"}:
-            value = _node_text(node, source)
-            if value and value not in result["imports"]:
-                result["imports"].append(value)
+        value = _node_text(node, source)
+        is_import = (
+            node.type in IMPORT_TYPES
+            or "import" in node.type
+            or node.type in {"use_declaration"}
+        )
+        # Ruby expresses require/require_relative as ordinary call nodes.
+        if language == "ruby" and value.startswith(("require ", "require(", "require_relative ")):
+            is_import = True
+        if is_import and value and value not in result["imports"]:
+            result["imports"].append(value)
 
     # Classes and their methods.
     for class_node in class_nodes:
