@@ -45,8 +45,8 @@ FUNCTION_TYPES = {
 }
 CLASS_TYPES = {
     "class_declaration", "class_definition", "class_specifier",
-    "struct_specifier", "union_specifier", "struct_type", "interface_type",
-    "type_spec", "struct_item", "interface_declaration", "trait_item", "impl_item",
+    "struct_specifier", "union_specifier", "type_spec",
+    "struct_item", "interface_declaration", "trait_declaration", "trait_item", "impl_item",
     "enum_specifier", "enum_declaration", "enum_item", "record_declaration",
 }
 IMPORT_TYPES = {
