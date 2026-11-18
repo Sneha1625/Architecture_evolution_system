@@ -263,6 +263,14 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
             for candidate in (dotted, dotted.replace(".", "/")):
                 if candidate in module_index or candidate in path_index:
                     return module_index.get(candidate) or path_index.get(candidate)
+            # Go module paths and Rust crate-qualified paths commonly include
+            # a repository/module prefix absent from the local source path.
+            suffix_matches = [
+                original for key, original in module_index.items()
+                if key.endswith("." + dotted) or dotted.endswith("." + key)
+            ]
+            if len(set(suffix_matches)) == 1:
+                return suffix_matches[0]
             # A class/module import may identify a source file by its final segment.
             final = re.split(r"[./:]+", token)[-1].lower()
             final = re.sub(r"\\.(py|js|jsx|mjs|cjs|ts|tsx|java|c|h|cc|cpp|cxx|hpp|hh|hxx|cs|go|rs|php|rb)$", "", final)
