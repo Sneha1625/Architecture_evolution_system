@@ -15,7 +15,7 @@ from architecture_model.runtime_evolution import (
 )
 from architecture_model.runtime_version_runner import (
     list_repository_commits,
-    list_common_python_entrypoints,
+    list_common_runtime_entrypoints,
     run_version_pair,
 )
 from features.runtime_mapping import build_runtime_component_map
@@ -43,10 +43,10 @@ def _render_runtime_evolution(repository_path):
         "The comparison below will use only those exact commits."
     )
     st.info(
-        "Runtime V1/V2 execution tracing currently supports Python scenarios. "
-        "Static architecture recovery supports all 11 supported language families. "
-        "Runtime traces for other languages are not generated until their "
-        "language-specific execution adapters are implemented."
+        "Runtime V1/V2 execution tracing currently supports Python and JavaScript "
+        "scenarios when the required runtime is installed. Static architecture "
+        "recovery supports all 11 language families. Other languages remain "
+        "static-analysis only until their runtime adapters are implemented."
     )
 
     try:
@@ -87,7 +87,7 @@ def _render_runtime_evolution(repository_path):
             )
 
         try:
-            scenario_options = list_common_python_entrypoints(
+            scenario_options = list_common_runtime_entrypoints(
                 repository_path, v1_commit, v2_commit
             )
         except Exception as error:
@@ -96,14 +96,14 @@ def _render_runtime_evolution(repository_path):
 
         if not scenario_options:
             st.warning(
-                "These commits do not share a bounded Python entry point. "
-                "Add a short runtime_scenario.py that imports and exercises the "
-                "application modules, then select it here."
+                "These commits do not share a supported bounded runtime scenario. "
+                "For Python, add runtime_scenario.py; for JavaScript, add "
+                "runtime_scenario.js. The same scenario must exist in both commits."
             )
             return
 
         preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "main.py", "cli.py", "run.py")
+            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "main.py", "cli.py", "run.py", "index.js")
              if name in scenario_options),
             scenario_options[0],
         )
@@ -112,8 +112,8 @@ def _render_runtime_evolution(repository_path):
             options=scenario_options,
             index=scenario_options.index(preferred_scenario),
             help=(
-                "Choose a bounded Python script that exercises the application "
-                "logic. Streamlit dashboard files are not valid runtime scenarios."
+                "Choose a bounded Python or JavaScript script that exercises "
+                "application logic. Long-running web-server launchers are excluded."
             ),
             key="runtime_selected_scenario",
         )
@@ -144,16 +144,16 @@ def _render_runtime_evolution(repository_path):
             )
 
         except FileNotFoundError as error:
-            # Runtime tracing is currently Python-only and requires a shared,
-            # bounded scenario in both selected commits. Keep the static
+            # Runtime tracing requires a shared, bounded scenario in both
+            # selected commits. Keep the static
             # repository graph, dependencies, and architecture history visible.
             st.warning(
                 "Runtime execution comparison is unavailable for these commits. "
-                "The selected versions do not share a runnable Python scenario. "
+                "The selected versions do not share a runnable supported scenario. "
                 "Your static architecture graph, inferred relationships, dependency "
                 "inventory, and snapshot history remain available above. "
-                "Runtime tracing for Java, JavaScript, TypeScript, and other "
-                "languages is not implemented yet."
+                "Runtime tracing for TypeScript, Java, C, C++, C#, Go, Rust, "
+                "PHP, and Ruby is not implemented yet."
             )
             st.caption(str(error))
             return
