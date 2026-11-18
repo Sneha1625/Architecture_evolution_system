@@ -745,13 +745,13 @@ def _render_repository_architecture(repository_path):
         '  node [shape=box, style="rounded,filled", fillcolor="#E8F0FE", color="#5B78A6"];',
     ]
     for component in snapshot.components:
-        label = component.name.replace("\\\\", "\\\\\\\\").replace('"', '\\\\"').replace("\\n", " ")
+        label = component.name.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
         dot_lines.append(f'  "{component.id}" [label="{label}"];')
     for edge in snapshot.relationships:
         dot_lines.append(f'  "{edge.source}" -> "{edge.target}";')
     dot_lines.append("}")
     try:
-        st.graphviz_chart("\\n".join(dot_lines), use_container_width=True)
+        st.graphviz_chart("\n".join(dot_lines), use_container_width=True)
     except Exception as graph_error:
         st.warning(f"Could not render the dependency graph: {graph_error}")
 
