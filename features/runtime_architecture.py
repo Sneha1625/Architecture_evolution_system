@@ -156,7 +156,7 @@ def _render_runtime_evolution(repository_path):
                 "The selected versions do not share a runnable supported scenario. "
                 "Your static architecture graph, inferred relationships, dependency "
                 "inventory, and snapshot history remain available above. "
-                "Runtime tracing for Java, C, C++, C#, Go, and PHP is not implemented yet. "
+                "Runtime tracing for Java, C, C++, C#, Go, Rust, and PHP is not implemented yet. "
                 "TypeScript requires syntax that Node.js "
                 "can strip without a separate build configuration."
             )
