@@ -15,6 +15,7 @@ from architecture_model.runtime_evolution import (
 )
 from architecture_model.runtime_version_runner import (
     list_repository_commits,
+    list_common_python_entrypoints,
     run_version_pair,
 )
 from features.runtime_mapping import build_runtime_component_map
@@ -78,6 +79,38 @@ def _render_runtime_evolution(repository_path):
                 format_func=commit_label,
                 key="runtime_v2_selected_commit",
             )
+
+        try:
+            scenario_options = list_common_python_entrypoints(
+                repository_path, v1_commit, v2_commit
+            )
+        except Exception as error:
+            st.error(f"Could not inspect runnable scenarios in the selected commits: {error}")
+            return
+
+        if not scenario_options:
+            st.warning(
+                "These commits do not share a bounded Python entry point. "
+                "Add a short runtime_scenario.py that imports and exercises the "
+                "application modules, then select it here."
+            )
+            return
+
+        preferred_scenario = next(
+            (name for name in ("runtime_scenario.py", "main.py", "cli.py", "run.py")
+             if name in scenario_options),
+            scenario_options[0],
+        )
+        selected_scenario = st.selectbox(
+            "Runtime scenario (the same script runs against both commits)",
+            options=scenario_options,
+            index=scenario_options.index(preferred_scenario),
+            help=(
+                "Choose a bounded Python script that exercises the application "
+                "logic. Streamlit dashboard files are not valid runtime scenarios."
+            ),
+            key="runtime_selected_scenario",
+        )
         run_comparison = st.form_submit_button("Compare selected commits")
 
     if not run_comparison:
@@ -94,6 +127,7 @@ def _render_runtime_evolution(repository_path):
                 repository_path=repository_path,
                 v1_commit=v1_commit,
                 v2_commit=v2_commit,
+                scenario=selected_scenario,
             )
 
             comparison = compare_runtime_architectures(
@@ -168,7 +202,7 @@ def _render_runtime_evolution(repository_path):
         )
 
     st.caption(
-        f"Scenario: `{versions['scenario']}`"
+        f"Runtime scenario executed in both versions: `{versions['scenario']}`"
     )
 
     # ========================================================
@@ -366,6 +400,29 @@ def _render_runtime_evolution(repository_path):
             st.write(
                 "None"
             )
+
+    with st.expander("Observed Runtime Modules and Relationships", expanded=False):
+        left, right = st.columns(2)
+        with left:
+            st.markdown("**V1 executed modules**")
+            st.write(versions["v1_runtime"].modules or ["No project modules were observed"])
+            st.markdown("**V1 runtime relationships**")
+            v1_edges = [f"{edge.source} → {edge.target} ({edge.call_count} calls)"
+                        for edge in versions["v1_runtime"].get_relationships()]
+            st.write(v1_edges or ["No cross-module calls were observed"])
+        with right:
+            st.markdown("**V2 executed modules**")
+            st.write(versions["v2_runtime"].modules or ["No project modules were observed"])
+            st.markdown("**V2 runtime relationships**")
+            v2_edges = [f"{edge.source} → {edge.target} ({edge.call_count} calls)"
+                        for edge in versions["v2_runtime"].get_relationships()]
+            st.write(v2_edges or ["No cross-module calls were observed"])
+
+    st.caption(
+        "These change counts describe only modules and calls reached by the selected "
+        "runtime scenario. A zero means no difference was observed during that run; "
+        "it does not mean the source files are identical."
+    )
 
     # ========================================================
     # RELATIONSHIP CHANGES
