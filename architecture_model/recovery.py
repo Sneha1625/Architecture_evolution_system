@@ -9,6 +9,7 @@ from architecture_model.model import Component, Relationship, ArchitectureSnapsh
 
 
 SOURCE_ROOTS = {"src", "source", "lib", "pkg", "packages"}
+SOURCE_ROOT_SEQUENCES = (("src", "main", "java"), ("src", "main", "kotlin"), ("src", "test", "java"), ("src", "test", "kotlin"), ("src", "main", "scala"), ("src", "test", "scala"))
 IGNORED_PATH_PARTS = {
     ".git", ".venv", "venv", "node_modules", "vendor", "build", "dist",
     "target", "coverage", "__pycache__", "site-packages",
@@ -77,9 +78,16 @@ def _component_key(relative_path: str) -> str:
     parts = [part for part in relative_path.split("/") if part]
     if not parts:
         return "unknown"
-    # A top-level source directory is a layout convention, not a component.
-    if len(parts) > 1 and parts[0].lower() in SOURCE_ROOTS:
-        parts = parts[1:]
+    # Strip conventional source-root prefixes used by Python, JS, Java,
+    # Kotlin and Scala repositories before choosing the package boundary.
+    lowered = tuple(part.lower() for part in parts)
+    for prefix in SOURCE_ROOT_SEQUENCES:
+        if lowered[:len(prefix)] == prefix:
+            parts = parts[len(prefix):]
+            break
+    else:
+        if len(parts) > 1 and parts[0].lower() in SOURCE_ROOTS:
+            parts = parts[1:]
     if len(parts) > 1:
         name = parts[0]
     else:
@@ -168,7 +176,9 @@ def _import_targets(imported: str, language: str) -> List[str]:
             add(match.group(1))
     elif lang in {"c", "cpp"}:
         match = re.search(r"""#\\s*include\\s*[<"]([^>"]+)""", raw)
-        if match and not raw.lstrip().startswith("#include <"):
+        if match:
+            # System headers will not resolve unless the repository contains
+            # a matching project file, so both quote and angle forms are safe.
             add(match.group(1))
     elif lang == "go":
         if not candidates:
