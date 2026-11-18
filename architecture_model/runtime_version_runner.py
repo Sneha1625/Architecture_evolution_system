@@ -49,7 +49,7 @@ def discover_python_entrypoints(worktree_path):
     known web-server launchers and test files to avoid blocking execution.
     """
     root = Path(worktree_path).resolve()
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred = ("runtime_scenario.py", "main.py", "cli.py", "run.py", "__main__.py", "sample_project.py")
     ignored = {
         ".git", ".venv", "venv", "env", "__pycache__", "site-packages",
         "node_modules", "tests", "test", "build", "dist", ".next",
@@ -598,6 +598,48 @@ def list_repository_commits(repository_path):
                 "date": parts[3], "message": parts[4],
             })
     return commits
+
+
+def list_common_python_entrypoints(repository_path, v1_commit: str, v2_commit: str):
+    """List bounded Python entry points present in both selected Git commits."""
+    repository = Path(repository_path).resolve()
+    if not repository.is_dir() or not (repository / ".git").exists():
+        raise ValueError(f"Selected repository is not a Git checkout: {repository}")
+
+    with tempfile.TemporaryDirectory(prefix="architecture_scenario_discovery_") as temp:
+        root = Path(temp)
+        v1_path = root / "version_1"
+        v2_path = root / "version_2"
+        added = []
+        try:
+            for path, commit in ((v1_path, v1_commit), (v2_path, v2_commit)):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "add", "--detach", str(path), commit],
+                    capture_output=True, text=True, check=True, timeout=120,
+                )
+                added.append(path)
+
+            common = set(discover_python_entrypoints(v1_path)) & set(discover_python_entrypoints(v2_path))
+            preferred = ("runtime_scenario.py", "main.py", "cli.py", "run.py", "__main__.py", "sample_project.py")
+            order = {name: index for index, name in enumerate(preferred)}
+            return sorted(
+                common,
+                key=lambda value: (
+                    order.get(Path(value).name, len(preferred)),
+                    len(Path(value).parts),
+                    value.lower(),
+                ),
+            )
+        finally:
+            for path in reversed(added):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "remove", "--force", str(path)],
+                    capture_output=True, text=True, timeout=60,
+                )
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "prune"],
+                capture_output=True, text=True, timeout=30,
+            )
 
 
 def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
