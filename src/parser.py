@@ -367,7 +367,7 @@ def _parse_tree_sitter(file_path: str, source_code: str, language: str) -> dict[
             or node.type in {"use_declaration"}
         )
         # Ruby expresses require/require_relative as ordinary call nodes.
-        if language == "ruby" and value.startswith(("require ", "require(", "require_relative ")):
+        if language == "ruby" and value.startswith(("require ", "require(", "require_relative ", "require_relative(")):
             is_import = True
         if is_import and value and value not in result["imports"]:
             result["imports"].append(value)
