@@ -246,7 +246,7 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
                 continue
             source_rel = relative.get(source_file, source_file)
             # Resolve relative filesystem imports against the importing file.
-            if token.startswith((".", "/")) or "/" in token or "\\\\" in token:
+            if token.startswith((".", "/")) or "/" in token or "\\" in token:
                 base = os.path.normpath(os.path.join(os.path.dirname(source_rel), token)).replace("\\", "/")
                 base = base.lstrip("./")
                 for suffix in ("",) + EXTENSIONS:
@@ -259,7 +259,7 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
                         if key in path_index:
                             return path_index[key]
             # Qualified module paths (Python, Java, C#, Go, Rust namespaces).
-            dotted = token.replace("::", ".").replace("\\\\", ".").replace("/", ".").strip(".").lower()
+            dotted = token.replace("::", ".").replace("\\", ".").replace("/", ".").strip(".").lower()
             dotted = re.sub(r"\.(py|js|jsx|mjs|cjs|ts|tsx|java|c|h|cc|cpp|cxx|hpp|hh|hxx|cs|go|rs|php|rb)$", "", dotted)
             for candidate in (dotted, dotted.replace(".", "/")):
                 if candidate in module_index or candidate in path_index:
