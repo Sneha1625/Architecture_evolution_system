@@ -33,7 +33,9 @@ EXTENSION_LANGUAGE = {
 
 IGNORED_DIRECTORIES = {
     ".git", ".venv", "venv", "env", "__pycache__", "node_modules",
-    ".idea", ".vscode", "build", "dist", "target", "bin", "obj",
+    ".idea", ".vscode", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".tox", "build", "dist", "target", "bin", "obj", "vendor",
+    "site-packages", "Pods", ".gradle", "out", "generated",
     ".next", ".nuxt", "coverage",
 }
 
