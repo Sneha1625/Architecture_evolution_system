@@ -29,5 +29,7 @@ jobs:
           python-version: "3.12"
       - name: Install test runner
         run: python -m pip install --upgrade pytest tree-sitter-language-pack
+      - name: Compile changed Python modules
+        run: python -m compileall -q architecture_model/recovery.py src/parser.py features/runtime_architecture.py
       - name: Run multi-language architecture recovery tests
         run: python -m pytest -q tests/test_multilanguage_recovery.py
