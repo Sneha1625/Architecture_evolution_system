@@ -148,7 +148,7 @@ def _import_targets(imported: str, language: str) -> List[str]:
 
     def add(value: str):
         value = value.strip().strip(";").strip()
-        value = value.strip("\\\"'() ")
+        value = value.strip("\"'() ")
         if value and value not in candidates:
             candidates.append(value)
 
@@ -159,26 +159,24 @@ def _import_targets(imported: str, language: str) -> List[str]:
 
     lang = (language or "").lower()
     if lang == "python":
-        match = re.search(r"^\\s*from\\s+([\\w.]+)\\s+import", raw)
+        match = re.search(r"^\s*from\s+([\w.]+)\s+import", raw)
         if match:
             add(match.group(1))
         else:
-            match = re.search(r"^\\s*import\\s+([\\w.]+)", raw)
+            match = re.search(r"^\s*import\s+([\w.]+)", raw)
             add(match.group(1) if match else raw)
     elif lang in {"javascript", "typescript", "tsx"}:
         if not candidates:
-            match = re.search(r"""(?:from\\s*|import\\s*)['"]([^'"]+)['"]|require\\(\\s*['"]([^'"]+)['"]""", raw)
+            match = re.search(r"""(?:from\s*|import\s*)['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]""", raw)
             if match:
                 add(match.group(1) or match.group(2))
     elif lang in {"java", "csharp"}:
-        match = re.search(r"(?:import|using)\\s+(?:static\\s+)?([\\w.]+)", raw)
+        match = re.search(r"(?:import|using)\s+(?:static\s+)?([\w.]+)", raw)
         if match:
             add(match.group(1))
     elif lang in {"c", "cpp"}:
-        match = re.search(r"""#\\s*include\\s*[<"]([^>"]+)""", raw)
+        match = re.search(r"""#\s*include\s*[<"]([^>"]+)""", raw)
         if match:
-            # System headers will not resolve unless the repository contains
-            # a matching project file, so both quote and angle forms are safe.
             add(match.group(1))
     elif lang == "go":
         if not candidates:
@@ -186,27 +184,24 @@ def _import_targets(imported: str, language: str) -> List[str]:
             if value and not value.startswith("import"):
                 add(value)
     elif lang == "rust":
-        match = re.search(r"\\b(?:use|mod)\\s+([\\w:]+)", raw)
+        match = re.search(r"\b(?:use|mod)\s+([\w:]+)", raw)
         if match:
             rust_path = match.group(1)
             add(rust_path)
-            # In "use crate::module::Type", the source file belongs to
-            # module.rs/mod.rs rather than a file named after the type.
             pieces = rust_path.split("::")
             if len(pieces) > 1:
                 add(".".join(pieces[:-1]))
     elif lang == "php":
-        match = re.search(r"\\b(?:use|require(?:_once)?|include(?:_once)?)\\s+([\\w\\\\./-]+)", raw, re.I)
+        match = re.search(r"\b(?:use|require(?:_once)?|include(?:_once)?)\s+([\w\\./-]+)", raw, re.I)
         if match:
             add(match.group(1))
     elif lang == "ruby":
-        match = re.search(r"""\\brequire(?:_relative)?\\s*\\(?\\s*['"]([^'"]+)""", raw)
+        match = re.search(r"""\brequire(?:_relative)?\s*\(?\s*['"]([^'"]+)""", raw)
         if match:
             add(match.group(1))
     if not candidates:
         add(raw)
     return candidates
-
 
 def build_relationships(components: List[Component], parsed_results: List[Dict[str, Any]]) -> List[Relationship]:
     """Resolve internal imports across the eleven supported language families."""
@@ -265,7 +260,7 @@ def build_relationships(components: List[Component], parsed_results: List[Dict[s
                             return path_index[key]
             # Qualified module paths (Python, Java, C#, Go, Rust namespaces).
             dotted = token.replace("::", ".").replace("\\\\", ".").replace("/", ".").strip(".").lower()
-            dotted = re.sub(r"\\.(py|js|jsx|mjs|cjs|ts|tsx|java|c|h|cc|cpp|cxx|hpp|hh|hxx|cs|go|rs|php|rb)$", "", dotted)
+            dotted = re.sub(r"\.(py|js|jsx|mjs|cjs|ts|tsx|java|c|h|cc|cpp|cxx|hpp|hh|hxx|cs|go|rs|php|rb)$", "", dotted)
             for candidate in (dotted, dotted.replace(".", "/")):
                 if candidate in module_index or candidate in path_index:
                     return module_index.get(candidate) or path_index.get(candidate)
