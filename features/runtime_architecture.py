@@ -43,8 +43,8 @@ def _render_runtime_evolution(repository_path):
         "The comparison below will use only those exact commits."
     )
     st.info(
-        "Runtime V1/V2 execution tracing currently supports Python and JavaScript "
-        "scenarios when the required runtime is installed. Static architecture "
+        "Runtime V1/V2 execution tracing currently supports Python, JavaScript, and "
+        "erasable TypeScript scenarios when the required runtime is installed. Static architecture "
         "recovery supports all 11 language families. Other languages remain "
         "static-analysis only until their runtime adapters are implemented."
     )
@@ -97,13 +97,14 @@ def _render_runtime_evolution(repository_path):
         if not scenario_options:
             st.warning(
                 "These commits do not share a supported bounded runtime scenario. "
-                "For Python, add runtime_scenario.py; for JavaScript, add "
-                "runtime_scenario.js. The same scenario must exist in both commits."
+                "For Python, add runtime_scenario.py; for JavaScript or erasable "
+                "TypeScript, add runtime_scenario.js or runtime_scenario.ts. "
+                "The same scenario must exist in both commits."
             )
             return
 
         preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "main.py", "cli.py", "run.py", "index.js")
+            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "main.py", "cli.py", "run.py", "index.js", "index.ts")
              if name in scenario_options),
             scenario_options[0],
         )
@@ -112,8 +113,9 @@ def _render_runtime_evolution(repository_path):
             options=scenario_options,
             index=scenario_options.index(preferred_scenario),
             help=(
-                "Choose a bounded Python or JavaScript script that exercises "
-                "application logic. Long-running web-server launchers are excluded."
+                "Choose a bounded Python, JavaScript, or erasable TypeScript "
+                "script that exercises application logic. Long-running web-server "
+                "launchers are excluded."
             ),
             key="runtime_selected_scenario",
         )
@@ -152,8 +154,9 @@ def _render_runtime_evolution(repository_path):
                 "The selected versions do not share a runnable supported scenario. "
                 "Your static architecture graph, inferred relationships, dependency "
                 "inventory, and snapshot history remain available above. "
-                "Runtime tracing for TypeScript, Java, C, C++, C#, Go, Rust, "
-                "PHP, and Ruby is not implemented yet."
+                "Runtime tracing for Java, C, C++, C#, Go, Rust, PHP, and Ruby "
+                "is not implemented yet. TypeScript requires syntax that Node.js "
+                "can strip without a separate build configuration."
             )
             st.caption(str(error))
             return
