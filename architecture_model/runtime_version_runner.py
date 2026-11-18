@@ -347,6 +347,11 @@ def validate_worktree(
 
     if not scenario:
         candidates = discover_python_entrypoints(worktree_path)
+    try:
+        from architecture_model.ruby_runtime_adapter import discover_ruby_entrypoints
+        candidates.extend(discover_ruby_entrypoints(worktree_path))
+    except ImportError:
+        pass
         if not candidates:
             raise FileNotFoundError("No Python entry point found in this repository. Add/select a runnable .py entry point.")
         scenario = candidates[0]
@@ -856,6 +861,10 @@ def run_version_pair(
                 from architecture_model.node_runtime_adapter import run_node_version
                 v1_runtime = run_node_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_node_version(v2_path, scenario=scenario, timeout=timeout)
+            elif Path(scenario).suffix.lower() == ".rb":
+                from architecture_model.ruby_runtime_adapter import run_ruby_version
+                v1_runtime = run_ruby_version(v1_path, scenario=scenario, timeout=timeout)
+                v2_runtime = run_ruby_version(v2_path, scenario=scenario, timeout=timeout)
             else:
                 v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
