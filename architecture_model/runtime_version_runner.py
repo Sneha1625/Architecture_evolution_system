@@ -347,11 +347,6 @@ def validate_worktree(
 
     if not scenario:
         candidates = discover_python_entrypoints(worktree_path)
-    try:
-        from architecture_model.ruby_runtime_adapter import discover_ruby_entrypoints
-        candidates.extend(discover_ruby_entrypoints(worktree_path))
-    except ImportError:
-        pass
         if not candidates:
             raise FileNotFoundError("No Python entry point found in this repository. Add/select a runnable .py entry point.")
         scenario = candidates[0]
@@ -728,6 +723,11 @@ def list_common_python_entrypoints(repository_path, v1_commit: str, v2_commit: s
 def discover_runtime_entrypoints(worktree_path):
     """Discover bounded scenarios for runtime adapters available in this build."""
     candidates = discover_python_entrypoints(worktree_path)
+    try:
+        from architecture_model.ruby_runtime_adapter import discover_ruby_entrypoints
+        candidates.extend(discover_ruby_entrypoints(worktree_path))
+    except ImportError:
+        pass
     try:
         from architecture_model.node_runtime_adapter import discover_node_entrypoints
         candidates.extend(discover_node_entrypoints(worktree_path))
