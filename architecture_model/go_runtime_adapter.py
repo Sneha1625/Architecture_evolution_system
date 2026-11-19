@@ -164,14 +164,22 @@ def run_go_version(worktree_path, scenario, timeout=300):
             else:
                 candidate = candidate.resolve()
             if not candidate.is_file():
-                suffix = Path(file_part).parts
-                matches = [
-                    item for item in root.rglob(suffix[-1])
-                    if len(item.parts) >= len(suffix)
-                    and tuple(item.parts[-len(suffix):]) == tuple(suffix)
-                ] if suffix else []
-                if len(matches) == 1:
-                    candidate = matches[0].resolve()
+                # Coverage output may retain a module import-path prefix even
+                # when "go list -m" cannot resolve it (for example in a
+                # workspace or replace-module setup). Resolve the longest
+                # unique source-path suffix inside the selected checkout.
+                parts = Path(file_part).parts
+                for size in range(len(parts) - 1, 0, -1):
+                    suffix = parts[-size:]
+                    matches = [
+                        item for item in root.rglob(suffix[-1])
+                        if len(item.parts) >= size
+                        and tuple(item.parts[-size:]) == tuple(suffix)
+                        and not any(part.lower() in IGNORED_DIRS for part in item.relative_to(root).parts)
+                    ]
+                    if len(matches) == 1:
+                        candidate = matches[0].resolve()
+                        break
             try:
                 relative = candidate.relative_to(root).as_posix()
             except (ValueError, OSError, RuntimeError):
