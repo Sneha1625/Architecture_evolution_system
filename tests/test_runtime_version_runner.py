@@ -120,3 +120,30 @@ def test_removed_standard_library_module_is_mapped_to_compatibility_distribution
 
 def test_unknown_missing_module_does_not_get_guessed():
     assert "some_project_module" not in LEGACY_STDLIB_DISTRIBUTIONS
+
+
+def test_stdlib_only_scenario_skips_heavy_requirements_install(tmp_path):
+    # A bounded sample scenario should run without installing unrelated
+    # application requirements such as the web/ML stack.
+    (tmp_path / "requirements.txt").write_text(
+        "sentence-transformers\\nscikit-learn\\nstreamlit\\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sample_project.py").write_text(
+        "import math\\n"
+        "class Calculator:\\n"
+        "    def add(self, a, b):\\n"
+        "        return a + b\\n"
+        "result = Calculator().add(2, 3)\\n"
+        "print(math.sqrt(result))\\n",
+        encoding="utf-8",
+    )
+
+    architecture = run_version(
+        tmp_path,
+        scenario="sample_project.py",
+        timeout=30,
+    )
+
+    assert "sample_project" in architecture.modules
+    assert architecture.total_calls > 0
