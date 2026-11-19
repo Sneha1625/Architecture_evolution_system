@@ -80,6 +80,10 @@ class RuntimeArchitecture:
 
     modules: Set[str] = field(default_factory=set)
 
+    # Function names observed executing in project source files. This includes
+    # same-module calls, unlike module-to-module relationship summaries.
+    executed_functions: Set[str] = field(default_factory=set)
+
     total_calls: int = 0
 
     def add_call(self, runtime_call: RuntimeCall) -> None:
@@ -140,6 +144,7 @@ class RuntimeArchitecture:
             "module_count": self.get_module_count(),
             "relationship_count": self.get_relationship_count(),
             "modules": sorted(self.modules),
+            "executed_functions": sorted(self.executed_functions),
             "calls": [
                 call.to_dict()
                 for call in self.calls
