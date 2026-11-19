@@ -7,6 +7,8 @@ runtime architectures from two Git worktrees (V1 and V2).
 
 import streamlit as st
 from pathlib import Path
+import subprocess
+import tempfile
 
 from architecture_model.runtime_analyzer import RuntimeAnalyzer
 from architecture_model.runtime_comparator import compare_architectures
@@ -20,6 +22,138 @@ from architecture_model.runtime_version_runner import (
     run_version_pair,
 )
 from features.runtime_mapping import build_runtime_component_map
+
+
+# ============================================================
+# QUICK STATIC COMMIT COMPARISON
+# ============================================================
+
+
+def _compare_static_commit_architectures(repository_path, v1_commit, v2_commit):
+    """Recover both commit architectures without installing project dependencies."""
+    from src.parser import parse_folder
+    from architecture_model.recovery import recover_architecture
+
+    repository = Path(repository_path).resolve()
+    with tempfile.TemporaryDirectory(prefix="architecture_static_compare_") as temp:
+        root = Path(temp)
+        worktrees = []
+        snapshots = []
+        try:
+            for label, commit in (("v1", v1_commit), ("v2", v2_commit)):
+                worktree = root / label
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "add", "--detach", str(worktree), commit],
+                    capture_output=True, text=True, check=True, timeout=120,
+                )
+                worktrees.append(worktree)
+                parsed = parse_folder(str(worktree))
+                parsed = [
+                    item for item in parsed
+                    if not item.get("error") or item.get("functions")
+                    or item.get("classes") or item.get("imports")
+                ]
+                snapshots.append(recover_architecture(parsed))
+
+            old, new = snapshots
+            old_components = {item.name: item for item in old.components}
+            new_components = {item.name: item for item in new.components}
+            old_names, new_names = set(old_components), set(new_components)
+            old_edges = {
+                (old_components[edge.source].name, old_components[edge.target].name, edge.type)
+                for edge in old.relationships
+                if edge.source in old_components and edge.target in old_components
+            }
+            new_edges = {
+                (new_components[edge.source].name, new_components[edge.target].name, edge.type)
+                for edge in new.relationships
+                if edge.source in new_components and edge.target in new_components
+            }
+            return {
+                "v1": {
+                    "files": len(parsed_files_for_snapshot(old, repository, worktrees[0])),
+                    "components": len(old.components),
+                    "relationships": len(old.relationships),
+                    "functions": sum(len(item.functions) for item in old.components),
+                    "classes": sum(len(item.classes) for item in old.components),
+                },
+                "v2": {
+                    "files": len(parsed_files_for_snapshot(new, repository, worktrees[1])),
+                    "components": len(new.components),
+                    "relationships": len(new.relationships),
+                    "functions": sum(len(item.functions) for item in new.components),
+                    "classes": sum(len(item.classes) for item in new.components),
+                },
+                "components_added": sorted(new_names - old_names),
+                "components_removed": sorted(old_names - new_names),
+                "relationships_added": sorted(new_edges - old_edges),
+                "relationships_removed": sorted(old_edges - new_edges),
+            }
+        finally:
+            for worktree in reversed(worktrees):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "remove", "--force", str(worktree)],
+                    capture_output=True, text=True, timeout=60,
+                )
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "prune"],
+                capture_output=True, text=True, timeout=30,
+            )
+
+
+def parsed_files_for_snapshot(snapshot, repository, worktree):
+    """Count source files represented by recovered components."""
+    files = set()
+    for component in snapshot.components:
+        for file_path in component.files:
+            try:
+                files.add(Path(file_path).resolve().relative_to(worktree.resolve()).as_posix())
+            except (ValueError, OSError):
+                files.add(str(file_path))
+    return len(files)
+
+
+def _display_quick_static_comparison(result, v1_commit, v2_commit):
+    st.markdown("### Quick Static Architecture Comparison")
+    st.caption(
+        f"Source structure recovered independently from commits {v1_commit[:10]} and {v2_commit[:10]}. "
+        "No project requirements are installed and no application code is executed."
+    )
+    left, right = st.columns(2)
+    for column, label, values in (
+        (left, "V1", result["v1"]),
+        (right, "V2", result["v2"]),
+    ):
+        column.markdown(f"**{label}**")
+        metrics = column.columns(3)
+        metrics[0].metric("Components", values["components"])
+        metrics[1].metric("Relationships", values["relationships"])
+        metrics[2].metric("Source files", values["files"])
+        metrics = column.columns(2)
+        metrics[0].metric("Functions / methods", values["functions"])
+        metrics[1].metric("Classes / types", values["classes"])
+
+    st.markdown("#### Structural changes")
+    metrics = st.columns(4)
+    metrics[0].metric("Components added", len(result["components_added"]))
+    metrics[1].metric("Components removed", len(result["components_removed"]))
+    metrics[2].metric("Dependencies added", len(result["relationships_added"]))
+    metrics[3].metric("Dependencies removed", len(result["relationships_removed"]))
+
+    with st.expander("Component changes", expanded=True):
+        st.write("**Added**")
+        st.write(result["components_added"] or ["None"])
+        st.write("**Removed**")
+        st.write(result["components_removed"] or ["None"])
+    with st.expander("Dependency changes", expanded=False):
+        st.write("**Added**")
+        st.write([f"{a} → {b} ({kind})" for a, b, kind in result["relationships_added"]] or ["None"])
+        st.write("**Removed**")
+        st.write([f"{a} → {b} ({kind})" for a, b, kind in result["relationships_removed"]] or ["None"])
+    st.info(
+        "This is static source analysis, not runtime evidence. It verifies recovered components "
+        "and import/dependency relationships without waiting for dependency installation."
+    )
 
 
 # ============================================================
@@ -99,46 +233,60 @@ def _render_runtime_evolution(repository_path):
 
         if not scenario_options:
             st.warning(
-                "These commits do not share a supported bounded runtime scenario. "
-                "For Python, add runtime_scenario.py; for JavaScript or erasable "
-                "TypeScript, add runtime_scenario.js or runtime_scenario.ts; "
-                "for Ruby, add runtime_scenario.rb; for Go, use a bounded package-main file "
-                "such as main.go with go.mod; for Java, select a class with static main; "
-                "for C/C++, select a source file defining main(); for C#, select a bounded "
-                "console application's .csproj file; for Rust, select Cargo.toml; for PHP, "
-                "add a bounded CLI script such as main.php with Xdebug enabled. "
-                "The same scenario must exist in both commits."
+                "No common bounded runtime scenario was found in both commits. "
+                "You can still run the quick static architecture comparison; runtime "
+                "tracing requires the same runnable scenario in both commits."
             )
-            return
-
-        preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "Cargo.toml", "runtime_scenario.php", "main.php", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
-             if name in scenario_options),
-            scenario_options[0],
-        )
-        selected_scenario = st.selectbox(
-            "Runtime scenario (the same script runs against both commits)",
-            options=scenario_options,
-            index=scenario_options.index(preferred_scenario),
-            help=(
-                "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, Go, Java, C, C++, Rust, or PHP "
-                "scenario that exercises application logic. Go, C/C++, C#, and Rust report executed "
-                "source files through coverage; Java reports sampled stack evidence, not exact "
-                "call counts; PHP uses Xdebug function traces. Long-running web-server launchers are excluded."
-            ),
-            key="runtime_selected_scenario",
-        )
+            selected_scenario = None
+        else:
+            preferred_scenario = next(
+                (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "Cargo.toml", "runtime_scenario.php", "main.php", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
+                 if name in scenario_options),
+                scenario_options[0],
+            )
+            selected_scenario = st.selectbox(
+                "Runtime scenario (the same script runs against both commits)",
+                options=scenario_options,
+                index=scenario_options.index(preferred_scenario),
+                help=(
+                    "Choose a bounded scenario that exercises application logic. "
+                    "Some language adapters report file coverage or sampled stacks rather "
+                    "than exact call counts."
+                ),
+                key="runtime_selected_scenario",
+            )
+        run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
+        run_comparison = st.form_submit_button("Run Runtime Comparison")
         run_comparison = st.form_submit_button("Compare selected commits")
-
-    if not run_comparison:
-        st.info("Select two commits and click **Compare selected commits**.")
-        return
 
     if v1_commit == v2_commit:
         st.error("Please select two different commits.")
         return
 
-    with st.spinner("Preparing the selected Git versions and tracing runtime execution..."):
+    if run_quick_comparison:
+        try:
+            with st.spinner("Recovering static architecture from the two selected commits..."):
+                static_result = _compare_static_commit_architectures(
+                    repository_path, v1_commit, v2_commit
+                )
+            _display_quick_static_comparison(static_result, v1_commit, v2_commit)
+        except Exception as error:
+            st.error("Quick static architecture comparison could not be completed.")
+            st.exception(error)
+        return
+
+    if not run_comparison:
+        st.info(
+            "Choose the two commits, then use **Quick Static Architecture Comparison** "
+            "for a fast source-level check or **Run Runtime Comparison** for execution evidence."
+        )
+        return
+
+    if not selected_scenario:
+        st.warning("Runtime comparison needs a common runnable scenario in both commits.")
+        return
+
+    with st.spinner("Running runtime scenarios for V1 and V2. Dependency setup may take time..."):
         try:
             versions = run_version_pair(
                 repository_path=repository_path,
