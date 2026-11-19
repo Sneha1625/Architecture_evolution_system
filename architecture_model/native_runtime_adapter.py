@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -87,7 +88,8 @@ def run_native_version(worktree_path, scenario, timeout=300):
     if not gcc or not gpp or not gcov:
         raise RuntimeError("GCC, G++, and gcov are required for C/C++ runtime tracing.")
 
-    sources = []
+    all_sources = []
+    main_sources = set()
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in SOURCE_EXTENSIONS:
             continue
@@ -96,7 +98,17 @@ def run_native_version(worktree_path, scenario, timeout=300):
             continue
         if path.stem.lower().endswith(("test", "tests", "benchmark", "bench")):
             continue
-        sources.append(path.resolve())
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        all_sources.append(path.resolve())
+        if _has_main(text):
+            main_sources.add(path.resolve())
+
+    # Repositories can contain several independent command-line programs.
+    # Compile the selected main plus shared source files, not other mains.
+    sources = [path for path in all_sources if path == scenario_path or path not in main_sources]
     if scenario_path not in sources:
         sources.append(scenario_path)
 
@@ -129,7 +141,7 @@ def run_native_version(worktree_path, scenario, timeout=300):
             object_files.append(obj)
             source_objects.append((source, obj))
 
-        executable = temp / ("runtime.exe" if __import__("os").name == "nt" else "runtime")
+        executable = temp / ("runtime.exe" if os.name == "nt" else "runtime")
         link_result = subprocess.run(
             [linker, "--coverage", *map(str, object_files), "-o", str(executable)],
             cwd=str(root), capture_output=True, text=True, timeout=timeout,
