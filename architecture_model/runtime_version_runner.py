@@ -807,6 +807,18 @@ def run_version(
 
         if execution_error:
 
+            if "EOFError" in execution_error and not runtime_input.strip():
+                raise RuntimeError(
+                    "This Python scenario requests keyboard input, but no input was supplied. "
+                    "To keep the Runtime Input field hidden, create a UTF-8 text file named "
+                    "'architecture_runtime_input.txt' in the selected repository's root folder. "
+                    "Put one response per line in the order requested by the program. "
+                    "The same file content is supplied to V1 and V2. "
+                    "For example, a program asking for two numbers could use two lines in that file. "
+                    "No input values are guessed automatically. "
+                    f"Scenario: {scenario}; version: {get_commit_hash(worktree_path)}."
+                )
+
             raise RuntimeError(
                 "Runtime scenario failed."
                 "\n\n"
@@ -1040,7 +1052,7 @@ def run_version_pair(
     v2_commit: str,
     scenario: str = DEFAULT_SCENARIO,
     timeout: int = 300,
-    runtime_input: str = "",
+    runtime_input: str | None = None,
 ):
     """
     Execute the same Python entry point at two user-selected commits.
@@ -1051,6 +1063,18 @@ def run_version_pair(
         raise FileNotFoundError(f"Selected GitHub repository path does not exist: {repository}")
     if not (repository / ".git").exists():
         raise ValueError(f"Selected repository is not a Git checkout: {repository}")
+
+    # Interactive Python scenarios can receive deterministic input without
+    # exposing a Streamlit text field. Read it once from the selected checkout
+    # and pass the identical payload to both commit worktrees.
+    if runtime_input is None:
+        input_file = repository / "architecture_runtime_input.txt"
+        try:
+            runtime_input = input_file.read_text(encoding="utf-8") if input_file.is_file() else ""
+        except OSError as error:
+            raise RuntimeError(
+                f"Could not read runtime input file {input_file}: {error}"
+            ) from error
     if not v1_commit or not v2_commit:
         raise ValueError("Select two commits before running Runtime Architecture comparison.")
     if v1_commit == v2_commit:
