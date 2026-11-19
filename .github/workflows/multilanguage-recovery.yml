@@ -1,5 +1,9 @@
 name: Multi-language architecture recovery tests
 
+concurrency:
+  group: multilanguage-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
