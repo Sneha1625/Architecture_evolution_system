@@ -193,10 +193,15 @@ def discover_python_entrypoints(worktree_path):
 # ============================================================
 
 TRACER_SCRIPT = r'''
+import ast
+import hashlib
+import inspect
 import json
 import os
 import runpy
 import sys
+import textwrap
+import types
 from pathlib import Path
 from functools import lru_cache
 
@@ -215,8 +220,43 @@ sys.path.insert(0, str(worktree))
 calls = []
 executed_modules = set()
 executed_functions = set()
+executed_function_fingerprints = {}
+executed_function_counts = {}
 total_python_calls = 0
 
+
+def _stable_code_value(value):
+    if isinstance(value, types.CodeType):
+        return {
+            "name": value.co_name,
+            "bytecode": value.co_code.hex(),
+            "constants": [_stable_code_value(item) for item in value.co_consts],
+            "names": list(value.co_names),
+            "varnames": list(value.co_varnames),
+        }
+    if isinstance(value, tuple):
+        return [_stable_code_value(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return type(value).__name__
+
+
+@lru_cache(maxsize=4096)
+def function_fingerprint(code):
+    """Fingerprint normalized source for the exact code object that ran."""
+    try:
+        source = textwrap.dedent(inspect.getsource(code))
+        normalized = ast.dump(ast.parse(source), include_attributes=False)
+    except (OSError, IOError, TypeError, IndentationError, SyntaxError):
+        normalized = json.dumps({
+            "bytecode": code.co_code.hex(),
+            "constants": _stable_code_value(code.co_consts),
+            "names": list(code.co_names),
+            "varnames": list(code.co_varnames),
+            "argcount": code.co_argcount,
+            "kwonlyargcount": code.co_kwonlyargcount,
+        }, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 @lru_cache(maxsize=8192)
@@ -273,7 +313,12 @@ def profiler(frame, event, arg):
     # including entry-point modules that do not make a cross-file call.
     if is_architecture_module(callee_module, frame.f_code.co_filename):
         executed_modules.add(callee_module)
-        executed_functions.add(f"{callee_module}.{frame.f_code.co_name}")
+        qualified_name = f"{callee_module}.{frame.f_code.co_qualname}"
+        executed_functions.add(qualified_name)
+        executed_function_counts[qualified_name] = executed_function_counts.get(qualified_name, 0) + 1
+        executed_function_fingerprints.setdefault(
+            qualified_name, function_fingerprint(frame.f_code)
+        )
 
     caller = frame.f_back
     if caller is None:
@@ -353,6 +398,8 @@ result = {
     "total_profiled_calls": total_python_calls,
     "modules": sorted(executed_modules),
     "executed_functions": sorted(executed_functions),
+    "executed_function_fingerprints": dict(sorted(executed_function_fingerprints.items())),
+    "executed_function_counts": dict(sorted(executed_function_counts.items())),
     "calls": calls,
     "error": execution_error,
 }
@@ -474,6 +521,12 @@ def build_runtime_architecture(
     )
     architecture.executed_functions.update(
         trace_data.get("executed_functions", [])
+    )
+    architecture.executed_function_fingerprints.update(
+        trace_data.get("executed_function_fingerprints", {})
+    )
+    architecture.executed_function_counts.update(
+        trace_data.get("executed_function_counts", {})
     )
 
     for item in trace_data.get(
