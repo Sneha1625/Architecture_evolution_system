@@ -253,7 +253,8 @@ def _render_runtime_evolution(repository_path):
                 ),
                 key="runtime_selected_scenario",
             )
-        # Runtime input is supplied automatically by the runner when needed.
+        # No visible input field: optional stdin is read from
+        # architecture_runtime_input.txt in the selected repository root.
         run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
         run_comparison = st.form_submit_button("Run Runtime Comparison")
 
