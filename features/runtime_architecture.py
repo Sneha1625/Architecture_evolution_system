@@ -299,7 +299,6 @@ def _render_runtime_evolution(repository_path):
                 v1_commit=v1_commit,
                 v2_commit=v2_commit,
                 scenario=selected_scenario,
-                runtime_input=runtime_input if Path(selected_scenario).suffix.lower() == ".py" else "",
             )
 
             comparison = compare_runtime_architectures(
@@ -574,12 +573,31 @@ def _render_runtime_evolution(repository_path):
     function_cols = st.columns(3)
     function_cols[0].metric("Functions executed in V1", summary.get("functions_executed_v1", 0))
     function_cols[1].metric("Functions executed in V2", summary.get("functions_executed_v2", 0))
-    function_cols[2].metric("Newly executed functions", summary.get("functions_added", 0))
+    function_cols[2].metric("Modified function bodies", summary.get("functions_modified", 0))
     with st.expander("Executed function changes", expanded=True):
         st.write("**Added in V2**")
         st.write(executed_changes.get("added") or ["None"])
         st.write("**No longer executed in V2**")
         st.write(executed_changes.get("removed") or ["None"])
+        st.write("**Modified implementations (executed in both versions)**")
+        st.write(executed_changes.get("modified") or ["None"])
+        if executed_changes.get("unverified_bodies"):
+            st.caption(
+                "Implementation fingerprints unavailable for: "
+                + ", ".join(executed_changes["unverified_bodies"])
+            )
+
+    function_call_changes = comparison.get("function_call_count_changes", [])
+    with st.expander("Executed Function Call-Count Changes", expanded=False):
+        if function_call_changes:
+            for change in function_call_changes:
+                st.write(
+                    f"**{change['function']}**: "
+                    f"{change['old_call_count']} → {change['new_call_count']} "
+                    f"({change['difference']:+d})"
+                )
+        else:
+            st.write("No per-function invocation-count differences were observed.")
 
     # ========================================================
     # MODULE CHANGES
