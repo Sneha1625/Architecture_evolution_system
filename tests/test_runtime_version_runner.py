@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from architecture_model.runtime_version_runner import (
+    LEGACY_STDLIB_DISTRIBUTIONS,
+    _missing_module_name,
     discover_python_entrypoints,
     run_version,
 )
@@ -106,3 +108,15 @@ def test_runtime_version_pair_populates_both_versions(tmp_path):
     assert result["v2_runtime"].get_relationship_count() >= 1
     assert result["v1_metrics"]["modules"] > 0
     assert result["v2_metrics"]["modules"] > 0
+
+
+
+def test_removed_standard_library_module_is_mapped_to_compatibility_distribution():
+    assert LEGACY_STDLIB_DISTRIBUTIONS["aifc"] == "standard-aifc"
+    assert _missing_module_name("ModuleNotFoundError: No module named 'aifc'") == "aifc"
+    assert _missing_module_name("ModuleNotFoundError: No module named 'pkg.submodule'") == "pkg"
+    assert _missing_module_name("ImportError: cannot import name 'X'") is None
+
+
+def test_unknown_missing_module_does_not_get_guessed():
+    assert "some_project_module" not in LEGACY_STDLIB_DISTRIBUTIONS
