@@ -141,6 +141,45 @@ def test_unknown_missing_module_does_not_get_guessed():
     assert "some_project_module" not in LEGACY_STDLIB_DISTRIBUTIONS
 
 
+def test_runtime_evolution_detects_modified_executed_function_body():
+    from architecture_model.runtime_model import RuntimeArchitecture
+    from architecture_model.runtime_evolution import compare_runtime_architectures
+
+    v1 = RuntimeArchitecture(entry_point="main.py")
+    v2 = RuntimeArchitecture(entry_point="main.py")
+    v1.executed_functions.add("main.calculate")
+    v2.executed_functions.add("main.calculate")
+    v1.executed_function_fingerprints["main.calculate"] = "hash-add"
+    v2.executed_function_fingerprints["main.calculate"] = "hash-multiply"
+    v1.executed_function_counts["main.calculate"] = 1
+    v2.executed_function_counts["main.calculate"] = 1
+
+    comparison = compare_runtime_architectures(v1, v2)
+
+    assert comparison["executed_function_changes"]["added"] == []
+    assert comparison["executed_function_changes"]["removed"] == []
+    assert comparison["executed_function_changes"]["modified"] == ["main.calculate"]
+    assert comparison["summary"]["functions_modified"] == 1
+    assert comparison["summary"]["function_changes"] == 1
+
+
+def test_runtime_evolution_detects_per_function_call_count_changes():
+    from architecture_model.runtime_model import RuntimeArchitecture
+    from architecture_model.runtime_evolution import compare_runtime_architectures
+
+    v1 = RuntimeArchitecture(entry_point="main.py")
+    v2 = RuntimeArchitecture(entry_point="main.py")
+    v1.executed_functions.add("main.calculate")
+    v2.executed_functions.add("main.calculate")
+    v1.executed_function_counts["main.calculate"] = 2
+    v2.executed_function_counts["main.calculate"] = 5
+
+    comparison = compare_runtime_architectures(v1, v2)
+
+    assert comparison["summary"]["function_call_count_changes"] == 1
+    assert comparison["function_call_count_changes"][0]["difference"] == 3
+
+
 def test_stdlib_only_scenario_skips_heavy_requirements_install(tmp_path):
     # A bounded sample scenario should run without installing unrelated
     # application requirements such as the web/ML stack.
