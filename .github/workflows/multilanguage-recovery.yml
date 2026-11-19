@@ -19,6 +19,8 @@ on:
       - "tests/test_csharp_runtime_adapter.py"
       - "architecture_model/rust_runtime_adapter.py"
       - "tests/test_rust_runtime_adapter.py"
+      - "architecture_model/php_runtime_adapter.py"
+      - "tests/test_php_runtime_adapter.py"
       - "tests/test_go_runtime_adapter.py"
       - "tests/test_ruby_runtime_adapter.py"
       - "tests/test_node_runtime_adapter.py"
@@ -44,6 +46,8 @@ on:
       - "tests/test_csharp_runtime_adapter.py"
       - "architecture_model/rust_runtime_adapter.py"
       - "tests/test_rust_runtime_adapter.py"
+      - "architecture_model/php_runtime_adapter.py"
+      - "tests/test_php_runtime_adapter.py"
   workflow_dispatch:
 
 jobs:
@@ -81,11 +85,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
+      - name: Set up PHP with Xdebug
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: xdebug
       - name: Install Rust coverage tool
         run: cargo install cargo-llvm-cov --locked
       - name: Install test runner
         run: python -m pip install --upgrade pytest tree-sitter-language-pack
       - name: Compile changed Python modules
-        run: python -m compileall -q architecture_model/recovery.py architecture_model/runtime_version_runner.py architecture_model/node_runtime_adapter.py architecture_model/ruby_runtime_adapter.py architecture_model/go_runtime_adapter.py architecture_model/java_runtime_adapter.py architecture_model/native_runtime_adapter.py architecture_model/csharp_runtime_adapter.py architecture_model/rust_runtime_adapter.py src/parser.py features/runtime_architecture.py
+        run: python -m compileall -q architecture_model/recovery.py architecture_model/runtime_version_runner.py architecture_model/node_runtime_adapter.py architecture_model/ruby_runtime_adapter.py architecture_model/go_runtime_adapter.py architecture_model/java_runtime_adapter.py architecture_model/native_runtime_adapter.py architecture_model/csharp_runtime_adapter.py architecture_model/rust_runtime_adapter.py architecture_model/php_runtime_adapter.py src/parser.py features/runtime_architecture.py
       - name: Run multi-language architecture recovery tests
-        run: python -m pytest -q tests/test_multilanguage_recovery.py tests/test_runtime_version_runner.py tests/test_node_runtime_adapter.py tests/test_ruby_runtime_adapter.py tests/test_go_runtime_adapter.py tests/test_java_runtime_adapter.py tests/test_native_runtime_adapter.py tests/test_csharp_runtime_adapter.py tests/test_rust_runtime_adapter.py
+        run: python -m pytest -q tests/test_multilanguage_recovery.py tests/test_runtime_version_runner.py tests/test_node_runtime_adapter.py tests/test_ruby_runtime_adapter.py tests/test_go_runtime_adapter.py tests/test_java_runtime_adapter.py tests/test_native_runtime_adapter.py tests/test_csharp_runtime_adapter.py tests/test_rust_runtime_adapter.py tests/test_php_runtime_adapter.py
