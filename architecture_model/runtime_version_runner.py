@@ -618,9 +618,17 @@ def _select_python_for_pair(v1_path: Path, v2_path: Path, scenario: str):
             candidate = Path(result.stdout.strip())
             if candidate.is_file():
                 return candidate
-        except (OSError, subprocess.SubprocessError):
-            pass
-    return Path(sys.executable)
+        except (OSError, subprocess.SubprocessError) as error:
+            raise RuntimeError(
+                "This repository pins dependencies that require Python 3.12, "
+                "but the Python 3.12 launcher could not be started. Install Python 3.12 "
+                "or verify that 'py -3.12' works, then retry."
+            ) from error
+    raise RuntimeError(
+        "This repository pins dependencies that require Python 3.12. "
+        "The current runtime is not Windows and no compatible interpreter "
+        "was selected automatically. Configure Python 3.12 and retry."
+    )
 
 
 def _prepare_runtime_interpreter(
