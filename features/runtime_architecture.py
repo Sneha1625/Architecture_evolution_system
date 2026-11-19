@@ -174,20 +174,21 @@ def _render_runtime_evolution(repository_path):
 
             if "ModuleNotFoundError" in error_text or "No module named" in error_text:
                 st.warning(
-                    "Runtime execution needs a dependency that is not available "
-                    "in the selected commit. The runtime runner now checks the "
-                    "repository and scenario requirements.txt files and installs "
-                    "declared packages in a temporary environment. If the missing "
-                    "module is still reported, add its correct package distribution "
-                    "to the applicable requirements.txt file and retry. If it is "
-                    "a project-local module, verify that the file exists in both "
-                    "selected commits and that its import path is correct."
+                    "The selected runtime scenario imports a module that could not "
+                    "be loaded. The runner automatically installs declared project "
+                    "dependencies and retries known Python standard-library modules "
+                    "removed in Python 3.13+ (including aifc) inside an isolated "
+                    "temporary environment. If the error remains, check whether the "
+                    "missing module is project-local, whether its package is declared "
+                    "in requirements.txt, or whether that dependency supports the "
+                    "active Python version."
                 )
                 st.code(error_text)
                 st.info(
-                    "Static architecture, source inventory, and commit-level "
-                    "architecture comparison remain available. Runtime metrics "
-                    "are not reported because the scenario did not complete."
+                    "Runtime metrics are shown only when the same scenario completes "
+                    "successfully in both selected commits. Static architecture, "
+                    "source inventory, and commit-level architecture comparison "
+                    "remain available when runtime execution is blocked."
                 )
             else:
                 st.error("Runtime execution comparison could not be completed.")
