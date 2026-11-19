@@ -505,17 +505,17 @@ def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment
         if candidate.is_file() and candidate not in requirements_files:
             requirements_files.append(candidate)
 
-    # Start quickly with a temporary environment that can see packages
-    # already installed for the application. Do not install every repository
-    # requirement up front: a small bounded scenario (for example a stdlib-only
-    # sample_project.py) may not need the web/ML stack at all. If execution
-    # proves a declared dependency is missing, run_version installs requirements
-    # into this temporary environment and retries once.
+    # Do not install every repository requirement up front. A bounded
+    # standard-library scenario may not need the web/ML stack at all. When a
+    # requirements file exists, keep the environment isolated; if execution
+    # proves a declared dependency is missing, run_version installs the
+    # requirements into this temporary environment and retries once. Repos
+    # without requirements retain access to the active environment packages.
     environment_path = Path(environment_path)
     venv.EnvBuilder(
         with_pip=True,
         clear=True,
-        system_site_packages=True,
+        system_site_packages=not requirements_files,
     ).create(str(environment_path))
     interpreter = (
         environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
