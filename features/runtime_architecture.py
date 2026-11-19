@@ -160,12 +160,11 @@ def _render_runtime_evolution(repository_path):
             # repository graph, dependencies, and architecture history visible.
             st.warning(
                 "Runtime execution comparison is unavailable for these commits. "
-                "The selected versions do not share a runnable supported scenario. "
-                "Your static architecture graph, inferred relationships, dependency "
-                "inventory, and snapshot history remain available above. "
-                "Runtime tracing for PHP is not implemented yet. "
-                "TypeScript requires syntax that Node.js "
-                "can strip without a separate build configuration."
+                "The selected versions do not share a supported bounded scenario, "
+                "or a required runtime/tool is missing. Your static architecture graph, "
+                "dependency inventory, and snapshot history remain available above. "
+                "TypeScript requires syntax that Node.js can strip without a separate "
+                "build configuration. Check the error details below for the exact reason."
             )
             st.caption(str(error))
             return
