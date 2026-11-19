@@ -6,6 +6,7 @@ A selected Cargo.toml must describe a bounded executable package.
 """
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -38,7 +39,6 @@ def discover_rust_entrypoints(worktree_path):
         except OSError:
             continue
         # Also support an explicitly declared [[bin]] path.
-        import re
         for match in re.finditer(r'(?ms)^\s*\[\[bin\]\](.*?)(?=^\s*\[|\Z)', text):
             path_match = re.search(r'(?m)^\s*path\s*=\s*"([^"]+)"', match.group(1))
             if path_match:
@@ -50,7 +50,7 @@ def discover_rust_entrypoints(worktree_path):
             source = entry.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if "fn main(" not in source.replace(" ", "") and "fn main (" not in source:
+        if not re.search(r"\\bfn\\s+main\\s*\\(", source):
             continue
         if any(marker in source.lower() for marker in SERVER_MARKERS):
             continue
