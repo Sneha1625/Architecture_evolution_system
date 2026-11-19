@@ -138,6 +138,7 @@ def run_php_version(worktree_path, scenario, timeout=300):
         command = [
             php,
             "-d", "xdebug.mode=trace",
+            "-d", "xdebug.trace_format=1",
             "-d", "xdebug.start_with_request=yes",
             "-d", f"xdebug.output_dir={temp}",
             "-d", "xdebug.trace_output_name=runtime_trace",
