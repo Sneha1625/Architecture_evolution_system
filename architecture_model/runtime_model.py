@@ -84,6 +84,11 @@ class RuntimeArchitecture:
     # same-module calls, unlike module-to-module relationship summaries.
     executed_functions: Set[str] = field(default_factory=set)
 
+    # Fingerprints describe the implementation that actually executed.
+    # Counts are observed invocation events, not static estimates.
+    executed_function_fingerprints: Dict[str, str] = field(default_factory=dict)
+    executed_function_counts: Dict[str, int] = field(default_factory=dict)
+
     total_calls: int = 0
 
     def add_call(self, runtime_call: RuntimeCall) -> None:
@@ -145,6 +150,8 @@ class RuntimeArchitecture:
             "relationship_count": self.get_relationship_count(),
             "modules": sorted(self.modules),
             "executed_functions": sorted(self.executed_functions),
+            "executed_function_fingerprints": dict(sorted(self.executed_function_fingerprints.items())),
+            "executed_function_counts": dict(sorted(self.executed_function_counts.items())),
             "calls": [
                 call.to_dict()
                 for call in self.calls
