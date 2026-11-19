@@ -66,9 +66,10 @@ def _compare_static_commit_architectures(repository_path, v1_commit, v2_commit):
                 })
 
             old, new = snapshots
-            old_components = {item.name: item for item in old.components}
-            new_components = {item.name: item for item in new.components}
-            old_names, new_names = set(old_components), set(new_components)
+            old_components = {item.id: item for item in old.components}
+            new_components = {item.id: item for item in new.components}
+            old_names = {item.name for item in old.components}
+            new_names = {item.name for item in new.components}
             old_edges = {
                 (old_components[edge.source].name, old_components[edge.target].name, edge.type)
                 for edge in old.relationships
