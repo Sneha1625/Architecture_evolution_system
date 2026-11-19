@@ -73,8 +73,11 @@ def _parse_xdebug_trace(trace_path, root, entry_point):
         # column 8 and the executing source filename in column 9 (1-based).
         filename = fields[8]
         module = _inside_project(filename, root)
+        included_file = _inside_project(fields[7], root)
         if module:
             architecture.modules.add(module)
+        if included_file:
+            architecture.modules.add(included_file)
         current = {
             "function": function_name,
             "module": module,
