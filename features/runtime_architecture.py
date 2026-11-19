@@ -251,7 +251,6 @@ def _render_runtime_evolution(repository_path):
             )
         run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
         run_comparison = st.form_submit_button("Run Runtime Comparison")
-        run_comparison = st.form_submit_button("Compare selected commits")
 
     if v1_commit == v2_commit:
         st.error("Please select two different commits.")
