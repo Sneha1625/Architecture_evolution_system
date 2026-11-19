@@ -50,7 +50,7 @@ def discover_rust_entrypoints(worktree_path):
             source = entry.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if not re.search(r"\\bfn\\s+main\\s*\\(", source):
+        if not re.search(r"\bfn\s+main\s*\(", source):
             continue
         if any(marker in source.lower() for marker in SERVER_MARKERS):
             continue
