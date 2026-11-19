@@ -44,11 +44,12 @@ def _render_runtime_evolution(repository_path):
         "The comparison below will use only those exact commits."
     )
     st.info(
-        "Runtime V1/V2 execution tracing currently supports Python, JavaScript, "
-        "erasable TypeScript, Ruby, and Go scenarios when the required runtime is installed. "
-        "Static architecture "
-        "recovery supports all 11 language families. Other languages remain "
-        "static-analysis only until their runtime adapters are implemented."
+        "Runtime V1/V2 execution evidence currently supports Python, JavaScript, "
+        "erasable TypeScript, Ruby, Go, and Java when the required runtime is installed. "
+        "Go uses compiler coverage to identify executed source files (not call edges or "
+        "call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
+        "counts). Static architecture recovery supports all 11 language families. "
+        "C, C++, C#, Rust, and PHP remain static-analysis only."
     )
 
     try:
