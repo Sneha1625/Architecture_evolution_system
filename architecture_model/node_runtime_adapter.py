@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -20,7 +21,21 @@ from urllib.parse import unquote, urlparse
 from architecture_model.runtime_model import RuntimeArchitecture, RuntimeCall
 
 
-NODE_EXTENSIONS = {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}
+NODE_EXTENSIONS = {".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx"}
+
+# Node.js does not transform JSX. These patterns identify JSX element and
+# fragment syntax so frontend component entrypoints are not selected as raw
+# Node execution scenarios.
+_JSX_OPENING_TAG = re.compile(
+    r"<(?:[A-Za-z][A-Za-z0-9_.:-]*)(?:\\s[^<>]*?)?\\s*/?>|<>",
+    re.DOTALL,
+)
+_JSX_CLOSING_TAG = re.compile(r"</(?:[A-Za-z][A-Za-z0-9_.:-]*|)>")
+
+
+def _contains_jsx_syntax(source):
+    """Return whether source appears to contain JSX that plain Node cannot run."""
+    return bool(_JSX_OPENING_TAG.search(source) and _JSX_CLOSING_TAG.search(source)) or "<>" in source
 
 
 def discover_node_entrypoints(worktree_path):
@@ -59,6 +74,11 @@ def discover_node_entrypoints(worktree_path):
         except OSError:
             continue
         if any(marker in source.lower() for marker in server_markers):
+            continue
+        # React/Vue-style frontend entrypoints often contain JSX and require a
+        # bundler/compiler plus a browser. Running them directly with Node gives
+        # misleading syntax errors and is not a bounded backend scenario.
+        if _contains_jsx_syntax(source):
             continue
         candidates.append(relative.as_posix())
     order = {name: index for index, name in enumerate(preferred)}
@@ -263,6 +283,14 @@ def run_node_version(worktree_path, scenario, timeout=300):
         raise ValueError("Runtime scenario must be inside the selected repository.") from error
     if not scenario_path.is_file() or scenario_path.suffix.lower() not in NODE_EXTENSIONS:
         raise FileNotFoundError(f"JavaScript runtime scenario not found: {scenario_path}")
+    source = scenario_path.read_text(encoding="utf-8", errors="ignore")
+    if _contains_jsx_syntax(source):
+        raise RuntimeError(
+            f"Selected scenario {scenario!r} contains JSX. Plain Node.js cannot execute JSX directly. "
+            "Select a runnable Node.js backend/CLI entry point, or add a bounded runtime_scenario.js "
+            "that exercises the application logic without starting a frontend development server. "
+            "For a React UI, use static architecture analysis unless a browser-driven runtime scenario is provided."
+        )
     node = _resolve_node_executable()
 
     architecture = RuntimeArchitecture(entry_point=scenario)
