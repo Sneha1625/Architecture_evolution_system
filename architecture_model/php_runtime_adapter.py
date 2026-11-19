@@ -1,6 +1,7 @@
 """PHP runtime adapter using Xdebug computerized function traces."""
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -146,15 +147,25 @@ def run_php_version(worktree_path, scenario, timeout=300):
             "-d", f"auto_prepend_file={prepend}",
             str(scenario_path),
         ]
+        environment = os.environ.copy()
+        # Xdebug 3 reads its mode at process startup; set the environment
+        # variable explicitly so CI or local php.ini defaults cannot mask trace mode.
+        environment["XDEBUG_MODE"] = "trace"
         try:
             process = subprocess.run(
-                command, cwd=str(root), capture_output=True, text=True, timeout=timeout,
+                command, cwd=str(root), env=environment,
+                capture_output=True, text=True, timeout=timeout,
             )
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(f"PHP runtime scenario timed out after {timeout} seconds: {scenario}") from error
         if process.returncode != 0:
             details = (process.stderr or process.stdout or "PHP exited unsuccessfully")[-5000:]
             raise RuntimeError(f"PHP runtime scenario failed ({process.returncode}):\n{details}")
-        if not trace_path.is_file():
-            raise RuntimeError("Xdebug did not produce a function trace.")
-        return _parse_xdebug_trace(trace_path, root, scenario)
+        actual_trace = trace_path if trace_path.is_file() else Path(str(trace_path) + ".xt")
+        if not actual_trace.is_file():
+            details = (process.stderr or process.stdout or "No PHP output")[-3000:]
+            raise RuntimeError(
+                "Xdebug did not produce a function trace. Confirm that the Xdebug "
+                "trace mode is enabled for the PHP CLI.\n" + details
+            )
+        return _parse_xdebug_trace(actual_trace, root, scenario)
