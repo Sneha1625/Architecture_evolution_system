@@ -248,6 +248,14 @@ def compare_runtime_architectures(
     old_total_calls = old_architecture.total_calls
     new_total_calls = new_architecture.total_calls
 
+    old_executed_functions = set(getattr(old_architecture, "executed_functions", set()))
+    new_executed_functions = set(getattr(new_architecture, "executed_functions", set()))
+    executed_function_changes = {
+        "added": sorted(new_executed_functions - old_executed_functions),
+        "removed": sorted(old_executed_functions - new_executed_functions),
+        "common": sorted(old_executed_functions & new_executed_functions),
+    }
+
     summary = {
         "modules_added": len(module_changes["added"]),
         "modules_removed": len(module_changes["removed"]),
@@ -260,9 +268,11 @@ def compare_runtime_architectures(
         "call_count_changes": len(
             relationship_changes["call_count_changes"]
         ),
-        "function_changes": len(
-            relationship_changes["function_changes"]
-        ),
+        "function_changes": len(executed_function_changes["added"]) + len(executed_function_changes["removed"]),
+        "functions_executed_v1": len(old_executed_functions),
+        "functions_executed_v2": len(new_executed_functions),
+        "functions_added": len(executed_function_changes["added"]),
+        "functions_removed": len(executed_function_changes["removed"]),
     }
 
     summary["total_behavioral_changes"] = (
@@ -298,6 +308,7 @@ def compare_runtime_architectures(
         "module_changes": module_changes,
 
         "relationship_changes": relationship_changes,
+        "executed_function_changes": executed_function_changes,
 
         "call_difference": (
             new_total_calls - old_total_calls
