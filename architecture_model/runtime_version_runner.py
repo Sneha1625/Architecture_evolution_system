@@ -693,8 +693,9 @@ def run_version(
                 f"Worktree: {worktree_path}\n"
                 f"Scenario: {scenario}\n"
                 f"Timeout: {timeout} seconds\n"
-                "If this scenario expects keyboard input, enter the required values in "
-                "the Runtime Input field (one input per line) and retry. "
+                "If this scenario expects keyboard input, create "
+                "'architecture_runtime_input.txt' in the selected repository root "
+                "with one response per line. The same contents are supplied to V1 and V2. "
                 "Interactive input is closed after the supplied text to prevent indefinite waits.\n"
             ) from error
 
