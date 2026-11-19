@@ -72,9 +72,16 @@ def test_jdk_tool_discovery_requires_complete_toolchain(tmp_path):
     assert _find_jdk_binaries(tmp_path) is None
 
     (bin_dir / names[2]).write_text("", encoding="utf-8")
+    if __import__("os").name != "nt":
+        for name in names:
+            (bin_dir / name).chmod(0o755)
+        lib_dir = tmp_path / "lib"
+        lib_dir.mkdir()
+        (lib_dir / "jfr").write_text("internal JFR library", encoding="utf-8")
     found = _find_jdk_binaries(tmp_path)
     assert found is not None
     assert set(found) == set(names)
+    assert all(path.parent == bin_dir for path in found.values())
 
 
 def test_jdk_resolver_uses_java_home_before_path(tmp_path, monkeypatch):
