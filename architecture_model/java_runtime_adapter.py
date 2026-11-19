@@ -144,6 +144,7 @@ def run_java_version(worktree_path, scenario, timeout=300):
         recording = temp / "runtime.jfr"
         command = [
             java,
+            "-XX:-Inline",
             f"-XX:StartFlightRecording=filename={recording},settings=profile,dumponexit=true",
             "-cp", str(classes), main_class,
         ]
