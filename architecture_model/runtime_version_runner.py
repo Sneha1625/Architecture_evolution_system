@@ -505,64 +505,26 @@ def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment
         if candidate.is_file() and candidate not in requirements_files:
             requirements_files.append(candidate)
 
-    # Always use a temporary environment so compatibility backports can be
-    # installed without changing the user's interpreter. If the repository
-    # has no requirements file, expose the active environment's installed
-    # packages as a read-only baseline; pip additions remain in this venv.
+    # Start quickly with a temporary environment that can see packages
+    # already installed for the application. Do not install every repository
+    # requirement up front: a small bounded scenario (for example a stdlib-only
+    # sample_project.py) may not need the web/ML stack at all. If execution
+    # proves a declared dependency is missing, run_version installs requirements
+    # into this temporary environment and retries once.
     environment_path = Path(environment_path)
     venv.EnvBuilder(
         with_pip=True,
         clear=True,
-        system_site_packages=not requirements_files,
+        system_site_packages=True,
     ).create(str(environment_path))
     interpreter = (
         environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     )
 
-    try:
-        install_timeout = max(
-            60,
-            int(os.environ.get("ARCHITECTURE_DEPENDENCY_INSTALL_TIMEOUT", "900")),
-        )
-    except ValueError:
-        install_timeout = 900
-
-    for requirements_file in requirements_files:
-        try:
-            subprocess.run(
-                [
-                    str(interpreter), "-m", "pip", "install",
-                    "--disable-pip-version-check",
-                    "--no-input",
-                    "--prefer-binary",
-                    "--retries", "2",
-                    "--timeout", "30",
-                    "-r", str(requirements_file),
-                ],
-                cwd=str(worktree_path),
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=install_timeout,
-            )
-        except subprocess.CalledProcessError as error:
-            details = (error.stderr or error.stdout or str(error))[-5000:]
-            raise RuntimeError(
-                f"Dependency installation failed for {requirements_file}:\\n{details}"
-            ) from error
-        except subprocess.TimeoutExpired as error:
-            stdout = error.stdout.decode(errors="replace") if isinstance(error.stdout, bytes) else (error.stdout or "")
-            stderr = error.stderr.decode(errors="replace") if isinstance(error.stderr, bytes) else (error.stderr or "")
-            details = (stderr or stdout or "pip produced no captured output")[-5000:]
-            raise RuntimeError(
-                f"Dependency installation timed out after {install_timeout} seconds "
-                f"for {requirements_file}.\\n"
-                f"Last installer output:\\n{details}\\n"
-                "If this repository has packages that do not support the active Python "
-                "version, use a compatible Python version or adjust its requirements.txt."
-            ) from error
-
     return interpreter, requirements_files
+
+
+
 
 
 # ============================================================
@@ -619,6 +581,13 @@ def run_version(
             scenario,
             environment_path,
         )
+        try:
+            install_timeout = max(
+                60,
+                int(os.environ.get("ARCHITECTURE_DEPENDENCY_INSTALL_TIMEOUT", "900")),
+            )
+        except ValueError:
+            install_timeout = 900
 
         def execute_scenario():
             if output_file.exists():
@@ -708,6 +677,50 @@ def run_version(
                 raise RuntimeError(
                     f"Installing Python compatibility package {distribution} "
                     f"timed out after {install_timeout} seconds."
+                ) from error
+
+        # Install the repository's declared dependencies only when the
+        # selected scenario actually fails because an import is missing. This
+        # avoids downloading heavyweight packages for standard-library-only
+        # scenarios while preserving a requirements-based retry for real apps.
+        missing_module = _missing_module_name(execution_error)
+        if execution_error and missing_module and requirements_files:
+            try:
+                for requirements_file in requirements_files:
+                    subprocess.run(
+                        [
+                            str(interpreter), "-m", "pip", "install",
+                            "--disable-pip-version-check",
+                            "--no-input",
+                            "--prefer-binary",
+                            "--retries", "2",
+                            "--timeout", "30",
+                            "-r", str(requirements_file),
+                        ],
+                        cwd=str(worktree_path),
+                        capture_output=True,
+                        text=True,
+                        check=True,
+                        timeout=install_timeout,
+                    )
+                process = execute_scenario()
+                if not output_file.exists():
+                    raise RuntimeError(
+                        "Runtime trace was not generated after installing declared requirements. "
+                        f"STDERR: {process.stderr}"
+                    )
+                trace_data = json.loads(output_file.read_text(encoding="utf-8"))
+                execution_error = trace_data.get("error")
+            except subprocess.CalledProcessError as error:
+                details = (error.stderr or error.stdout or str(error))[-5000:]
+                raise RuntimeError(
+                    "The scenario needs a declared dependency, but requirements "
+                    f"installation failed for {requirements_file}:\\n{details}"
+                ) from error
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError(
+                    f"Dependency installation timed out after {install_timeout} seconds "
+                    f"for {requirements_file}. The selected scenario could not be retried."
                 ) from error
 
         if execution_error:
