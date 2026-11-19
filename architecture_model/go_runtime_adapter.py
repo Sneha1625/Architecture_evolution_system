@@ -136,22 +136,42 @@ def run_go_version(worktree_path, scenario, timeout=300):
         if not coverage_text.is_file():
             raise RuntimeError("Go coverage conversion produced no coverage evidence.")
 
+        module_result = subprocess.run(
+            [go, "list", "-m"], cwd=str(module_root), env=env,
+            capture_output=True, text=True, timeout=timeout,
+        )
+        module_name = module_result.stdout.strip() if module_result.returncode == 0 else ""
+
         for line in coverage_text.read_text(encoding="utf-8", errors="ignore").splitlines():
             if not line or line.startswith("mode:"):
                 continue
             try:
                 location, count_text = line.rsplit(" ", 1)
-                file_part = location.split(":", 1)[0]
+                file_part = location.split(":", 1)[0].replace("\\\\", "/")
                 count = int(count_text)
             except (ValueError, IndexError):
                 continue
             if count <= 0:
                 continue
+
+            # Go coverage profiles use import-path-prefixed source locations
+            # (for example example.com/app/internal/store.go), not OS paths.
+            if module_name and file_part.startswith(module_name + "/"):
+                file_part = file_part[len(module_name) + 1:]
             candidate = Path(file_part)
             if not candidate.is_absolute():
                 candidate = (module_root / candidate).resolve()
             else:
                 candidate = candidate.resolve()
+            if not candidate.is_file():
+                suffix = Path(file_part).parts
+                matches = [
+                    item for item in root.rglob(suffix[-1])
+                    if len(item.parts) >= len(suffix)
+                    and tuple(item.parts[-len(suffix):]) == tuple(suffix)
+                ] if suffix else []
+                if len(matches) == 1:
+                    candidate = matches[0].resolve()
             try:
                 relative = candidate.relative_to(root).as_posix()
             except (ValueError, OSError, RuntimeError):
