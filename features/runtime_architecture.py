@@ -105,7 +105,9 @@ def _render_runtime_evolution(repository_path):
                 "for Ruby, add runtime_scenario.rb; for Go, use a bounded package-main file "
                 "such as main.go with go.mod; for Java, select a class with static main; "
                 "for C/C++, select a source file defining main(); for C#, select a bounded "
-                "console application's .csproj file. The same scenario must exist in both commits."
+                "console application's .csproj file; for Rust, select Cargo.toml; for PHP, "
+                "add a bounded CLI script such as main.php with Xdebug enabled. "
+                "The same scenario must exist in both commits."
             )
             return
 
@@ -119,10 +121,10 @@ def _render_runtime_evolution(repository_path):
             options=scenario_options,
             index=scenario_options.index(preferred_scenario),
             help=(
-                "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, Go, Java, C, or C++ "
+                "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, Go, Java, C, C++, Rust, or PHP "
                 "scenario that exercises application logic. Go, C/C++, C#, and Rust report executed "
-                "source files through coverage; Java reports sampled stack evidence, not "
-                "exact call counts. Long-running web-server launchers are excluded."
+                "source files through coverage; Java reports sampled stack evidence, not exact "
+                "call counts; PHP uses Xdebug function traces. Long-running web-server launchers are excluded."
             ),
             key="runtime_selected_scenario",
         )
