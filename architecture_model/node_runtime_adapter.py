@@ -41,14 +41,15 @@ def _contains_jsx_syntax(source):
 def discover_node_entrypoints(worktree_path):
     """Return conservative, bounded JavaScript entry-point candidates."""
     root = Path(worktree_path).resolve()
+    # Prefer explicit CLI/demo scenarios and backend entry points. A generic
+    # index.js is frequently a browser bundle entry point, not a Node program.
     preferred = (
-        "runtime_scenario.js", "main.js", "cli.js",
-        "index.js", "sample_project.js",
-        "runtime_scenario.mjs", "main.mjs", "index.mjs",
-        "runtime_scenario.cjs", "main.cjs", "index.cjs",
-        "runtime_scenario.ts", "main.ts", "index.ts",
-        "runtime_scenario.mts", "main.mts", "index.mts",
-        "runtime_scenario.cts", "main.cts", "index.cts",
+        "runtime_scenario.js", "cli.js", "main.js", "sample_project.js", "index.js",
+        "runtime_scenario.mjs", "cli.mjs", "main.mjs", "sample_project.mjs", "index.mjs",
+        "runtime_scenario.cjs", "cli.cjs", "main.cjs", "sample_project.cjs", "index.cjs",
+        "runtime_scenario.ts", "cli.ts", "main.ts", "sample_project.ts", "index.ts",
+        "runtime_scenario.mts", "cli.mts", "main.mts", "index.mts",
+        "runtime_scenario.cts", "cli.cts", "main.cts", "index.cts",
     )
     ignored = {
         ".git", "node_modules", "vendor", "dist", "build",
@@ -73,11 +74,27 @@ def discover_node_entrypoints(worktree_path):
             source = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if any(marker in source.lower() for marker in server_markers):
+        lowered = source.lower()
+        if any(marker in lowered for marker in server_markers):
             continue
-        # React/Vue-style frontend entrypoints often contain JSX and require a
-        # bundler/compiler plus a browser. Running them directly with Node gives
-        # misleading syntax errors and is not a bounded backend scenario.
+        # Browser scripts may be valid JavaScript but cannot run in plain Node:
+        # DOM globals such as document/window are not defined outside a browser.
+        # Exclude them rather than returning misleading zero/failed runtime data.
+        browser_only_patterns = (
+            r"\\bdocument\\s*\\.",
+            r"\\bwindow\\s*\\.",
+            r"\\bnavigator\\s*\\.",
+            r"\\blocalStorage\\b",
+            r"\\bsessionStorage\\b",
+            r"\\bHTMLElement\\b",
+            r"\\bHTMLCanvasElement\\b",
+            r"\\bgetElementById\\s*\\(",
+            r"\\bquerySelector(?:All)?\\s*\\(",
+            r"\\brequestAnimationFrame\\s*\\(",
+        )
+        if any(re.search(pattern, source, re.IGNORECASE) for pattern in browser_only_patterns):
+            continue
+        # Frontend entrypoints often contain JSX and require a bundler/compiler.
         if _contains_jsx_syntax(source):
             continue
         candidates.append(relative.as_posix())
