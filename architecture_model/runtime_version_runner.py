@@ -203,6 +203,12 @@ from functools import lru_cache
 worktree = Path(sys.argv[1]).resolve()
 scenario = sys.argv[2]
 output_file = Path(sys.argv[3]).resolve()
+stdin_file = Path(sys.argv[4]).resolve() if len(sys.argv) > 4 else None
+
+# Use an explicit file-backed stdin for the scenario. This avoids losing
+# Streamlit-supplied input between the outer tracer process and runpy.
+if stdin_file is not None:
+    sys.stdin = stdin_file.open("r", encoding="utf-8")
 
 sys.path.insert(0, str(worktree))
 
@@ -586,6 +592,8 @@ def run_version(
             temporary_directory
             / "runtime_trace.json"
         )
+        stdin_file = temporary_directory / "runtime_stdin.txt"
+        stdin_file.write_text(runtime_input or "", encoding="utf-8")
         environment_path = temporary_directory / "python_environment"
 
         tracer_file.write_text(
@@ -616,11 +624,11 @@ def run_version(
                     str(worktree_path),
                     scenario,
                     str(output_file),
+                    str(stdin_file),
                 ],
                 cwd=str(worktree_path),
                 capture_output=True,
                 text=True,
-                input=runtime_input,
                 timeout=timeout,
             )
 
