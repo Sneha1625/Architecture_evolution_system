@@ -724,6 +724,11 @@ def discover_runtime_entrypoints(worktree_path):
     """Discover bounded scenarios for runtime adapters available in this build."""
     candidates = discover_python_entrypoints(worktree_path)
     try:
+        from architecture_model.native_runtime_adapter import discover_native_entrypoints
+        candidates.extend(discover_native_entrypoints(worktree_path))
+    except ImportError:
+        pass
+    try:
         from architecture_model.java_runtime_adapter import discover_java_entrypoints
         candidates.extend(discover_java_entrypoints(worktree_path))
     except ImportError:
@@ -883,6 +888,10 @@ def run_version_pair(
                 from architecture_model.java_runtime_adapter import run_java_version
                 v1_runtime = run_java_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_java_version(v2_path, scenario=scenario, timeout=timeout)
+            elif Path(scenario).suffix.lower() in {".c", ".cc", ".cpp", ".cxx", ".c++"}:
+                from architecture_model.native_runtime_adapter import run_native_version
+                v1_runtime = run_native_version(v1_path, scenario=scenario, timeout=timeout)
+                v2_runtime = run_native_version(v2_path, scenario=scenario, timeout=timeout)
             else:
                 v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
