@@ -139,6 +139,7 @@ def run_php_version(worktree_path, scenario, timeout=300):
             "-d", "xdebug.start_with_request=yes",
             "-d", f"xdebug.output_dir={temp}",
             "-d", "xdebug.trace_output_name=runtime_trace",
+            "-d", "xdebug.use_compression=0",
             str(scenario_path),
         ]
         environment = os.environ.copy()
