@@ -74,6 +74,93 @@ def _missing_module_name(error_text):
     return match.group(1).split(".", 1)[0] if match else None
 
 
+
+
+def _python_entrypoint_reaches_hardware_api(worktree_path, entrypoint):
+    """Detect camera-dependent code reachable through local Python imports."""
+    import ast
+
+    root = Path(worktree_path).resolve()
+    pending = [Path(entrypoint)]
+    visited = set()
+    hardware_patterns = (
+        re.compile(r"\bcv2\s*\.\s*VideoCapture\b", re.IGNORECASE),
+        re.compile(r"\bVideoCapture\s*\(", re.IGNORECASE),
+        re.compile(r"\bCAP_(?:DSHOW|MSMF|V4L2|AVFOUNDATION)\b", re.IGNORECASE),
+        re.compile(r"\bPicamera2\s*\(", re.IGNORECASE),
+        re.compile(r"\bVideoStream\s*\(", re.IGNORECASE),
+        re.compile(r"could not open camera source", re.IGNORECASE),
+        re.compile(r"failed to open camera", re.IGNORECASE),
+    )
+
+    def local_module_paths(module_name, base):
+        if not module_name:
+            return []
+        parts = [part for part in module_name.split(".") if part]
+        if not parts:
+            return []
+        candidate = base.joinpath(*parts)
+        found = []
+        for item in (candidate.with_suffix(".py"), candidate / "__init__.py"):
+            try:
+                resolved = item.resolve()
+                resolved.relative_to(root)
+                if resolved.is_file():
+                    found.append(resolved)
+            except (OSError, ValueError, RuntimeError):
+                continue
+        return found
+
+    while pending and len(visited) < 250:
+        relative = pending.pop()
+        path = (root / relative).resolve()
+        try:
+            path.relative_to(root)
+        except (ValueError, RuntimeError):
+            continue
+        if path in visited or not path.is_file() or path.suffix.lower() not in {".py", ".pyw"}:
+            continue
+        visited.add(path)
+
+        try:
+            source = path.read_text(encoding="utf-8", errors="ignore")
+            if any(pattern.search(source) for pattern in hardware_patterns):
+                return True
+            tree = ast.parse(source, filename=str(path))
+        except (OSError, SyntaxError, ValueError):
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    pending.extend(item.relative_to(root) for item in local_module_paths(alias.name, root))
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    package_parts = list(path.parent.relative_to(root).parts)
+                    if node.level > 1:
+                        package_parts = package_parts[:max(0, len(package_parts) - node.level + 1)]
+                    if node.module:
+                        package_parts.extend(node.module.split("."))
+                    base_module = ".".join(package_parts)
+                    for item in local_module_paths(base_module, root):
+                        pending.append(item.relative_to(root))
+                    child_base = root.joinpath(*package_parts)
+                    for alias in node.names:
+                        if alias.name != "*":
+                            pending.extend(item.relative_to(root) for item in local_module_paths(alias.name, child_base))
+                else:
+                    if node.module:
+                        pending.extend(item.relative_to(root) for item in local_module_paths(node.module, root))
+                        child_base = root.joinpath(*node.module.split("."))
+                    else:
+                        child_base = root.joinpath(*path.parent.relative_to(root).parts)
+                    for alias in node.names:
+                        if alias.name != "*":
+                            pending.extend(item.relative_to(root) for item in local_module_paths(alias.name, child_base))
+
+    return False
+
+
 def discover_python_entrypoints(worktree_path):
     """Find likely bounded Python execution scenarios without guessing.
 
@@ -136,19 +223,9 @@ def discover_python_entrypoints(worktree_path):
         if any(marker in lowered for marker in server_markers):
             continue
 
-        # Hardware-dependent demos (camera, microphone, serial devices) cannot
-        # be executed reliably in an isolated architecture-comparison worker.
-        # In particular, attendance/vision applications often terminate with
-        # SystemExit when no physical camera is available. Keep them in static
-        # analysis, but do not auto-select them as runtime scenarios.
-        camera_signals = (
-            "cv2.videocapture",
-            "videocapture(",
-            "could not open camera source",
-            "camera source",
-            "cap_dshow",
-        )
-        if sum(signal in lowered for signal in camera_signals) >= 2:
+        # Camera initialization is often hidden in imported modules.
+        # Exclude entry points whose local import graph opens a physical camera.
+        if _python_entrypoint_reaches_hardware_api(root, relative):
             continue
 
         has_main_guard = False
