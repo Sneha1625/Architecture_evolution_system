@@ -584,8 +584,8 @@ def _requirements_files(worktree_path: Path, scenario: str):
 def _requirements_need_python312(worktree_paths, scenario: str) -> bool:
     """Detect common pinned scientific packages that cannot build on Python 3.14."""
     legacy_patterns = (
-        re.compile(r"^\\s*numpy\\s*(?:==|<=|<)\\s*1\\.", re.IGNORECASE),
-        re.compile(r"^\\s*mediapipe\\s*(?:==|<=|<)\\s*0\\.", re.IGNORECASE),
+        re.compile(r"^\s*numpy\s*(?:==|<=|<)\s*1\.", re.IGNORECASE),
+        re.compile(r"^\s*mediapipe\s*(?:==|<=|<)\s*0\.", re.IGNORECASE),
     )
     for worktree_path in worktree_paths:
         for requirements_file in _requirements_files(Path(worktree_path), scenario):
