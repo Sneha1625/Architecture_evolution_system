@@ -252,6 +252,15 @@ def _render_runtime_evolution(repository_path):
                 ),
                 key="runtime_selected_scenario",
             )
+        runtime_input = ""
+        if selected_scenario and Path(selected_scenario).suffix.lower() == ".py":
+            runtime_input = st.text_area(
+                "Runtime Input (optional)",
+                placeholder="Enter program input, one value per line. Example:\n2\n3",
+                help="For Python scripts that use input(), provide the same stdin values for both commits, one line per prompt. Leave blank for non-interactive scenarios.",
+                key="runtime_scenario_stdin",
+            )
+
         run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
         run_comparison = st.form_submit_button("Run Runtime Comparison")
 
@@ -297,6 +306,7 @@ def _render_runtime_evolution(repository_path):
                 v1_commit=v1_commit,
                 v2_commit=v2_commit,
                 scenario=selected_scenario,
+                runtime_input=runtime_input if Path(selected_scenario).suffix.lower() == ".py" else "",
             )
 
             comparison = compare_runtime_architectures(
