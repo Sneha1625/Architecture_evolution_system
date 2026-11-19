@@ -18,7 +18,7 @@ IGNORED_DIRS = {
     "examples", ".cargo", "node_modules", "coverage",
 }
 SERVER_MARKERS = (
-    "httpserver::bind", "axum::serve", "warp::serve",
+    "httpserver::bind", "httpserver::new", "axum::serve", "warp::serve",
     "actix_web::httpserver", "rocket::build", "tcp_listener::bind",
 )
 
