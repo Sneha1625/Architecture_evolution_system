@@ -215,13 +215,23 @@ total_python_calls = 0
 
 @lru_cache(maxsize=8192)
 def is_project_file(filename):
-    """Cache file membership checks to avoid repeated path resolution."""
+    """Accept only real Python source files physically inside this commit's worktree.
+
+    Frozen/builtin frames often expose pseudo-filenames such as
+    '<frozen importlib._bootstrap>'. Path.resolve() would incorrectly treat
+    those relative pseudo-filenames as files under the current worktree.
+    """
     if not filename:
         return False
 
+    raw_filename = str(filename)
+    if raw_filename.startswith("<") and raw_filename.endswith(">"):
+        return False
+
     try:
-        Path(filename).resolve().relative_to(worktree)
-        return True
+        source_path = Path(raw_filename).resolve(strict=True)
+        source_path.relative_to(worktree)
+        return source_path.is_file() and source_path.suffix.lower() in {".py", ".pyw"}
     except (ValueError, OSError, RuntimeError):
         return False
 
