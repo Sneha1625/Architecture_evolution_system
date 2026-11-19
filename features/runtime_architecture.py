@@ -45,7 +45,7 @@ def _render_runtime_evolution(repository_path):
     )
     st.info(
         "Runtime V1/V2 execution tracing currently supports Python, JavaScript, "
-        "erasable TypeScript, and Ruby scenarios when the required runtime is installed. "
+        "erasable TypeScript, Ruby, and Go scenarios when the required runtime is installed. "
         "Static architecture "
         "recovery supports all 11 language families. Other languages remain "
         "static-analysis only until their runtime adapters are implemented."
