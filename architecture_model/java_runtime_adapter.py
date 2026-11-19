@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import tarfile
 import urllib.error
 import urllib.request
 import zipfile
@@ -113,6 +114,12 @@ def _provision_temurin_jdk():
             "Automatic JDK setup is disabled by ARCHITECTURE_AUTO_INSTALL_JDK=0."
         )
 
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        from_java_home = _find_jdk_binaries(Path(java_home))
+        if from_java_home:
+            return from_java_home
+
     local_app_data = os.environ.get("LOCALAPPDATA")
     cache_base = Path(local_app_data) if local_app_data else Path.home() / ".cache"
     cache_root = cache_base / "ArchitectureIntelligence" / "toolchains" / "temurin-21"
@@ -157,13 +164,23 @@ def _provision_temurin_jdk():
         extraction = temporary_path / "extracted"
         extraction.mkdir()
         try:
-            with zipfile.ZipFile(archive) as bundle:
-                for member in bundle.infolist():
-                    destination = (extraction / member.filename).resolve()
-                    if not destination.is_relative_to(extraction.resolve()):
-                        raise RuntimeError("The downloaded JDK archive contains an unsafe path.")
-                bundle.extractall(extraction)
-        except (OSError, zipfile.BadZipFile) as error:
+            if zipfile.is_zipfile(archive):
+                with zipfile.ZipFile(archive) as bundle:
+                    for member in bundle.infolist():
+                        destination = (extraction / member.filename).resolve()
+                        if not destination.is_relative_to(extraction.resolve()):
+                            raise RuntimeError("The downloaded JDK archive contains an unsafe path.")
+                    bundle.extractall(extraction)
+            else:
+                with tarfile.open(archive, "r:*") as bundle:
+                    for member in bundle.getmembers():
+                        destination = (extraction / member.name).resolve()
+                        if not destination.is_relative_to(extraction.resolve()):
+                            raise RuntimeError("The downloaded JDK archive contains an unsafe path.")
+                        if member.issym() or member.islnk():
+                            raise RuntimeError("The downloaded JDK archive contains an unsupported link.")
+                    bundle.extractall(extraction)
+        except (OSError, zipfile.BadZipFile, tarfile.TarError) as error:
             raise RuntimeError("The downloaded Java JDK archive could not be extracted.") from error
 
         binaries = _find_jdk_binaries(extraction)
@@ -183,6 +200,11 @@ def _provision_temurin_jdk():
 def _resolve_java_tools():
     """Use a system JDK when available, otherwise provision cached Temurin 21."""
     names = ("java.exe", "javac.exe", "jfr.exe") if os.name == "nt" else ("java", "javac", "jfr")
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        found = _find_jdk_binaries(Path(java_home))
+        if found:
+            return found
     found = {name: shutil.which(name[:-4] if name.endswith(".exe") else name) for name in names}
     if all(found.values()):
         return found
