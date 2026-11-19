@@ -129,37 +129,78 @@ def _provision_temurin_jdk():
         return cached
 
     cache_root.mkdir(parents=True, exist_ok=True)
-    download_url = (
-        "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/"
-        "jdk/hotspot/normal/eclipse"
-        if os.name == "nt" else
-        "https://api.adoptium.net/v3/binary/latest/21/ga/"
-        + ("mac" if os.uname().sysname == "Darwin" else "linux")
-        + "/"
-        + ("aarch64" if os.uname().machine.lower() in {"arm64", "aarch64"} else "x64")
-        + "/jdk/hotspot/normal/eclipse"
+    system_name = "windows" if os.name == "nt" else (
+        "mac" if os.uname().sysname == "Darwin" else "linux"
     )
+    machine = os.environ.get("PROCESSOR_ARCHITECTURE", "") if os.name == "nt" else os.uname().machine
+    architecture = "aarch64" if machine.lower() in {"arm64", "aarch64"} else "x64"
+    archive_suffix = ".zip" if system_name == "windows" else ".tar.gz"
+    asset_prefix = f"OpenJDK21U-jdk_{architecture}_{system_name}_hotspot_"
+
+    def download_from(url, destination):
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Architecture-Intelligence-System/1.0"},
+        )
+        with urllib.request.urlopen(request, timeout=90) as response, destination.open("wb") as output:
+            total = 0
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > 600 * 1024 * 1024:
+                    raise RuntimeError("The JDK download exceeded the 600 MB safety limit.")
+                output.write(chunk)
 
     with tempfile.TemporaryDirectory(prefix="architecture_jdk_setup_") as temporary:
         temporary_path = Path(temporary)
-        archive = temporary_path / "temurin-jdk.zip"
+        archive = temporary_path / ("temurin-jdk.zip" if archive_suffix == ".zip" else "temurin-jdk.tar.gz")
+        download_errors = []
+        # Try Adoptium's binary endpoint first. Some networks/proxies return 403
+        # for this endpoint even though GitHub release downloads are permitted.
+        adoptium_url = (
+            f"https://api.adoptium.net/v3/binary/latest/21/ga/{system_name}/"
+            f"{architecture}/jdk/hotspot/normal/eclipse"
+        )
         try:
-            with urllib.request.urlopen(download_url, timeout=45) as response, archive.open("wb") as output:
-                total = 0
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    total += len(chunk)
-                    if total > 600 * 1024 * 1024:
-                        raise RuntimeError("The JDK download exceeded the 600 MB safety limit.")
-                    output.write(chunk)
+            download_from(adoptium_url, archive)
         except (OSError, urllib.error.URLError) as error:
-            raise RuntimeError(
-                "Could not download the Java JDK automatically. Check your internet connection "
-                "and allow access to api.adoptium.net, then retry. "
-                "You can also install a JDK 21 manually."
-            ) from error
+            download_errors.append(f"Adoptium binary endpoint: {error}")
+            # Resolve the current Temurin 21 release asset through GitHub's public
+            # releases API, then download the matching platform archive.
+            try:
+                api_request = urllib.request.Request(
+                    "https://api.github.com/repos/adoptium/temurin21-binaries/releases/latest",
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "User-Agent": "Architecture-Intelligence-System/1.0",
+                    },
+                )
+                with urllib.request.urlopen(api_request, timeout=30) as response:
+                    release = json.loads(response.read().decode("utf-8"))
+                matching_assets = [
+                    asset for asset in release.get("assets", [])
+                    if asset.get("name", "").startswith(asset_prefix)
+                    and asset.get("name", "").endswith(archive_suffix)
+                ]
+                if not matching_assets:
+                    raise RuntimeError(
+                        f"No Temurin 21 archive found for {system_name}/{architecture}."
+                    )
+                asset = matching_assets[0]
+                download_from(asset["browser_download_url"], archive)
+            except (OSError, urllib.error.URLError, ValueError, KeyError, RuntimeError) as error:
+                download_errors.append(f"GitHub Temurin release fallback: {error}")
+                raise RuntimeError(
+                    "Could not download the Java JDK automatically. The Adoptium download "
+                    "endpoint and GitHub release fallback both failed. Check internet access "
+                    "to api.adoptium.net and github.com, then retry. You can also install "
+                    "a JDK 21 manually. Details: " + " | ".join(download_errors)
+                ) from error
+
+        if not archive.is_file() or archive.stat().st_size == 0:
+            raise RuntimeError("The Java JDK download returned an empty archive.")
 
         extraction = temporary_path / "extracted"
         extraction.mkdir()
