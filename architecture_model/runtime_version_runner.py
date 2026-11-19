@@ -208,6 +208,7 @@ sys.path.insert(0, str(worktree))
 
 calls = []
 executed_modules = set()
+executed_functions = set()
 total_python_calls = 0
 
 
@@ -256,6 +257,7 @@ def profiler(frame, event, arg):
     # including entry-point modules that do not make a cross-file call.
     if is_architecture_module(callee_module, frame.f_code.co_filename):
         executed_modules.add(callee_module)
+        executed_functions.add(f"{callee_module}.{frame.f_code.co_name}")
 
     caller = frame.f_back
     if caller is None:
@@ -334,6 +336,7 @@ result = {
     "worktree": str(worktree),
     "total_profiled_calls": total_python_calls,
     "modules": sorted(executed_modules),
+    "executed_functions": sorted(executed_functions),
     "calls": calls,
     "error": execution_error,
 }
@@ -452,6 +455,9 @@ def build_runtime_architecture(
     # did not participate in a cross-module relationship.
     architecture.modules.update(
         trace_data.get("modules", [])
+    )
+    architecture.executed_functions.update(
+        trace_data.get("executed_functions", [])
     )
 
     for item in trace_data.get(
