@@ -81,16 +81,16 @@ def discover_node_entrypoints(worktree_path):
         # DOM globals such as document/window are not defined outside a browser.
         # Exclude them rather than returning misleading zero/failed runtime data.
         browser_only_patterns = (
-            r"\\bdocument\\s*\\.",
-            r"\\bwindow\\s*\\.",
-            r"\\bnavigator\\s*\\.",
-            r"\\blocalStorage\\b",
-            r"\\bsessionStorage\\b",
-            r"\\bHTMLElement\\b",
-            r"\\bHTMLCanvasElement\\b",
-            r"\\bgetElementById\\s*\\(",
-            r"\\bquerySelector(?:All)?\\s*\\(",
-            r"\\brequestAnimationFrame\\s*\\(",
+            r"\bdocument\s*\.",
+            r"\bwindow\s*\.",
+            r"\bnavigator\s*\.",
+            r"\blocalStorage\b",
+            r"\bsessionStorage\b",
+            r"\bHTMLElement\b",
+            r"\bHTMLCanvasElement\b",
+            r"\bgetElementById\s*\(",
+            r"\bquerySelector(?:All)?\s*\(",
+            r"\brequestAnimationFrame\s*\(",
         )
         if any(re.search(pattern, source, re.IGNORECASE) for pattern in browser_only_patterns):
             continue
