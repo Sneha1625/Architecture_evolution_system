@@ -45,11 +45,11 @@ def _render_runtime_evolution(repository_path):
     )
     st.info(
         "Runtime V1/V2 execution evidence currently supports Python, JavaScript, "
-        "erasable TypeScript, Ruby, Go, Java, C, C++, C#, and Rust when the required toolchains are installed. "
+        "erasable TypeScript, Ruby, Go, Java, C, C++, C#, Rust, and PHP when the required runtimes/tools are installed. "
         "Go, C/C++, C#, and Rust use compiler coverage to identify executed source files (not call "
         "edges or call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
-        "counts). Static architecture recovery supports all 11 language families. "
-        "PHP remains static-analysis only."
+        "counts); PHP uses Xdebug function traces. Static architecture recovery supports all 11 "
+        "language families."
     )
 
     try:
@@ -110,7 +110,7 @@ def _render_runtime_evolution(repository_path):
             return
 
         preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "Cargo.toml", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
+            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "Cargo.toml", "runtime_scenario.php", "main.php", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
              if name in scenario_options),
             scenario_options[0],
         )
@@ -246,6 +246,11 @@ def _render_runtime_evolution(repository_path):
         st.info(
             "Rust runtime evidence uses cargo-llvm-cov to identify executed source files. "
             "It does not collect runtime call relationships or call counts."
+        )
+    elif Path(versions["scenario"]).suffix.lower() == ".php":
+        st.info(
+            "PHP runtime evidence uses Xdebug's computerized function trace to observe "
+            "project file execution and function-call stack transitions."
         )
 
     # ========================================================
