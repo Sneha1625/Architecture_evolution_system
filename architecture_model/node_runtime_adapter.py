@@ -187,7 +187,9 @@ def _provision_node_runtime():
                         if not destination.is_relative_to(extraction.resolve()):
                             raise RuntimeError("The Node.js archive contains an unsafe path.")
                         if member.issym() or member.islnk():
-                            raise RuntimeError("The Node.js archive contains an unsupported link.")
+                            link_target = (destination.parent / member.linkname).resolve()
+                            if not link_target.is_relative_to(extraction.resolve()):
+                                raise RuntimeError("The Node.js archive contains an unsafe link.")
                     bundle.extractall(extraction)
         except (OSError, zipfile.BadZipFile, tarfile.TarError) as error:
             raise RuntimeError("The downloaded Node.js archive could not be extracted.") from error
