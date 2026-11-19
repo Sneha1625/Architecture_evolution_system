@@ -568,34 +568,81 @@ def build_runtime_architecture(
     return architecture
 
 
-def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment_path: Path):
-    """Install snapshot-declared requirements without changing the user's environment."""
+def _requirements_files(worktree_path: Path, scenario: str):
+    """Return requirements files that belong to the selected scenario."""
     scenario_parent = (Path(worktree_path) / scenario).parent
     candidates = [
         Path(worktree_path) / "requirements.txt",
         scenario_parent / "requirements.txt",
     ]
-    requirements_files = []
-    for candidate in candidates:
-        if candidate.is_file() and candidate not in requirements_files:
-            requirements_files.append(candidate)
+    return [
+        candidate for candidate in dict.fromkeys(candidates)
+        if candidate.is_file()
+    ]
 
-    # Do not install every repository requirement up front. A bounded
-    # standard-library scenario may not need the web/ML stack at all. When a
-    # requirements file exists, keep the environment isolated; if execution
-    # proves a declared dependency is missing, run_version installs the
-    # requirements into this temporary environment and retries once. Repos
-    # without requirements retain access to the active environment packages.
+
+def _requirements_need_python312(worktree_paths, scenario: str) -> bool:
+    """Detect common pinned scientific packages that cannot build on Python 3.14."""
+    legacy_patterns = (
+        re.compile(r"^\\s*numpy\\s*(?:==|<=|<)\\s*1\\.", re.IGNORECASE),
+        re.compile(r"^\\s*mediapipe\\s*(?:==|<=|<)\\s*0\\.", re.IGNORECASE),
+    )
+    for worktree_path in worktree_paths:
+        for requirements_file in _requirements_files(Path(worktree_path), scenario):
+            try:
+                lines = requirements_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+            except OSError:
+                continue
+            for line in lines:
+                requirement = line.split("#", 1)[0].strip()
+                if any(pattern.search(requirement) for pattern in legacy_patterns):
+                    return True
+    return False
+
+
+def _select_python_for_pair(v1_path: Path, v2_path: Path, scenario: str):
+    """Choose one compatible base interpreter for both snapshots."""
+    if sys.version_info < (3, 13) or not _requirements_need_python312(
+        (v1_path, v2_path), scenario
+    ):
+        return Path(sys.executable)
+
+    # On Windows, use the Python launcher to locate the separately installed
+    # 3.12 interpreter. Never change the user's global/default Python.
+    if sys.platform == "win32":
+        try:
+            result = subprocess.run(
+                ["py", "-3.12", "-c", "import sys; print(sys.executable)"],
+                capture_output=True, text=True, check=True, timeout=15,
+            )
+            candidate = Path(result.stdout.strip())
+            if candidate.is_file():
+                return candidate
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return Path(sys.executable)
+
+
+def _prepare_runtime_interpreter(
+    worktree_path: Path,
+    scenario: str,
+    environment_path: Path,
+    python_executable: Path | None = None,
+):
+    """Create an isolated environment from the selected compatible Python."""
+    requirements_files = _requirements_files(Path(worktree_path), scenario)
     environment_path = Path(environment_path)
-    venv.EnvBuilder(
-        with_pip=True,
-        clear=True,
-        system_site_packages=not requirements_files,
-    ).create(str(environment_path))
+    base_python = Path(python_executable or sys.executable)
+    subprocess.run(
+        [str(base_python), "-m", "venv", str(environment_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    )
     interpreter = (
         environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     )
-
     return interpreter, requirements_files
 
 
@@ -611,6 +658,7 @@ def run_version(
     scenario: str = DEFAULT_SCENARIO,
     timeout: int = 600,
     runtime_input: str = "",
+    python_executable: Path | None = None,
 ) -> RuntimeArchitecture:
     """
     Execute one runtime scenario inside one Git worktree.
@@ -658,6 +706,7 @@ def run_version(
             worktree_path,
             scenario,
             environment_path,
+            python_executable=python_executable,
         )
         try:
             install_timeout = max(
@@ -1105,6 +1154,10 @@ def run_version_pair(
             validate_worktree(v1_path, scenario)
             validate_worktree(v2_path, scenario)
 
+            # Resolve once from the combined V1/V2 requirements so both
+            # snapshots run under the same Python version.
+            pair_python = _select_python_for_pair(v1_path, v2_path, scenario)
+
             if Path(scenario).suffix.lower() in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
                 from architecture_model.node_runtime_adapter import run_node_version
                 v1_runtime = run_node_version(v1_path, scenario=scenario, timeout=timeout)
@@ -1138,8 +1191,14 @@ def run_version_pair(
                 v1_runtime = run_php_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_php_version(v2_path, scenario=scenario, timeout=timeout)
             else:
-                v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout, runtime_input=runtime_input)
-                v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout, runtime_input=runtime_input)
+                v1_runtime = run_version(
+                    v1_path, scenario=scenario, timeout=timeout,
+                    runtime_input=runtime_input, python_executable=pair_python,
+                )
+                v2_runtime = run_version(
+                    v2_path, scenario=scenario, timeout=timeout,
+                    runtime_input=runtime_input, python_executable=pair_python,
+                )
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
