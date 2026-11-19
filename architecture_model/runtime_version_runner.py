@@ -16,6 +16,7 @@ without checking out or modifying the main working repository.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -397,8 +398,7 @@ def get_commit_hash(
         return "unknown"
 
 
-# ============================================================
-# RECONSTRUCT RUNTIME ARCHITECTURE
+# ============================================================# RECONSTRUCT RUNTIME ARCHITECTURE
 # ============================================================
 
 def build_runtime_architecture(
@@ -484,18 +484,31 @@ def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment
         environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     )
 
+    try:
+        install_timeout = max(
+            60,
+            int(os.environ.get("ARCHITECTURE_DEPENDENCY_INSTALL_TIMEOUT", "900")),
+        )
+    except ValueError:
+        install_timeout = 900
+
     for requirements_file in requirements_files:
         try:
             subprocess.run(
                 [
                     str(interpreter), "-m", "pip", "install",
-                    "--disable-pip-version-check", "-r", str(requirements_file),
+                    "--disable-pip-version-check",
+                    "--no-input",
+                    "--prefer-binary",
+                    "--retries", "2",
+                    "--timeout", "30",
+                    "-r", str(requirements_file),
                 ],
                 cwd=str(worktree_path),
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=240,
+                timeout=install_timeout,
             )
         except subprocess.CalledProcessError as error:
             details = (error.stderr or error.stdout or str(error))[-5000:]
@@ -503,8 +516,15 @@ def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment
                 f"Dependency installation failed for {requirements_file}:\\n{details}"
             ) from error
         except subprocess.TimeoutExpired as error:
+            stdout = error.stdout.decode(errors="replace") if isinstance(error.stdout, bytes) else (error.stdout or "")
+            stderr = error.stderr.decode(errors="replace") if isinstance(error.stderr, bytes) else (error.stderr or "")
+            details = (stderr or stdout or "pip produced no captured output")[-5000:]
             raise RuntimeError(
-                f"Dependency installation timed out for {requirements_file}."
+                f"Dependency installation timed out after {install_timeout} seconds "
+                f"for {requirements_file}.\\n"
+                f"Last installer output:\\n{details}\\n"
+                "If this repository has packages that do not support the active Python "
+                "version, use a compatible Python version or adjust its requirements.txt."
             ) from error
 
     return interpreter, requirements_files
@@ -797,8 +817,7 @@ def list_common_runtime_entrypoints(repository_path, v1_commit: str, v2_commit: 
             for path in reversed(added):
                 subprocess.run(
                     ["git", "-C", str(repository), "worktree", "remove", "--force", str(path)],
-                    capture_output=True, text=True, timeout=60,
-                )
+                    capture_output=True, text=True, timeout=60,                )
             subprocess.run(
                 ["git", "-C", str(repository), "worktree", "prune"],
                 capture_output=True, text=True, timeout=30,
@@ -1198,7 +1217,6 @@ if __name__ == "__main__":
             )
 
     else:
-
         print(
             "  None"
         )
