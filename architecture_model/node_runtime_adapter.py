@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -149,17 +150,46 @@ def _provision_node_runtime():
             with urllib.request.urlopen(index_request, timeout=30) as response:
                 releases = json.loads(response.read().decode("utf-8"))
             release = next(
-                item for item in releases
-                if item.get("version", "").startswith("v22.")
-                and platform_name in item.get("files", [])
+                (
+                    item for item in releases
+                    if item.get("version", "").startswith("v22.")
+                    and platform_name in item.get("files", [])
+                ),
+                None,
             )
-            version = release["version"]
-            archive_name = f"node-{version}-{platform_name}{archive_suffix}"
-            download(
-                f"https://nodejs.org/dist/{version}/{archive_name}",
-                archive,
-                150 * 1024 * 1024,
-            )
+            if release:
+                version = release["version"]
+                archive_name = f"node-{version}-{platform_name}{archive_suffix}"
+                download(
+                    f"https://nodejs.org/dist/{version}/{archive_name}",
+                    archive,
+                    150 * 1024 * 1024,
+                )
+            else:
+                # Some mirrors or index responses omit the platform list. Resolve
+                # the official latest-v22.x archive from its published checksums.
+                checksums_request = urllib.request.Request(
+                    "https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt",
+                    headers={"User-Agent": "Architecture-Intelligence-System/1.0"},
+                )
+                with urllib.request.urlopen(checksums_request, timeout=30) as response:
+                    checksums = response.read().decode("utf-8", errors="replace")
+                archive_pattern = re.compile(
+                    rf"^\\S+\\s+(node-v22\\.\\d+\\.\\d+-{re.escape(platform_name)}"
+                    rf"{re.escape(archive_suffix)})$",
+                    re.MULTILINE,
+                )
+                archive_match = archive_pattern.search(checksums)
+                if not archive_match:
+                    raise RuntimeError(
+                        f"No official Node.js 22 archive was listed for {platform_name}."
+                    )
+                archive_name = archive_match.group(1)
+                download(
+                    f"https://nodejs.org/dist/latest-v22.x/{archive_name}",
+                    archive,
+                    150 * 1024 * 1024,
+                )
         except (OSError, urllib.error.URLError, ValueError, KeyError, StopIteration, RuntimeError) as error:
             raise RuntimeError(
                 "Could not download Node.js 22 automatically. Check internet access to "
