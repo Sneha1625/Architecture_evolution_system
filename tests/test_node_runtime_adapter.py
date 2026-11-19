@@ -152,20 +152,20 @@ def test_node_entrypoint_discovery_ignores_react_jsx_frontend(tmp_path):
     frontend = tmp_path / "client" / "src"
     frontend.mkdir(parents=True)
     (frontend / "index.js").write_text(
-        "import React from 'react';\\n"
-        "import { createRoot } from 'react-dom/client';\\n"
-        "createRoot(document.getElementById('root')).render(\\n"
-        "  <React.StrictMode><App /></React.StrictMode>\\n"
-        ");\\n",
+        "import React from 'react';\n"
+        "import { createRoot } from 'react-dom/client';\n"
+        "createRoot(document.getElementById('root')).render(\n"
+        "  <React.StrictMode><App /></React.StrictMode>\n"
+        ");\n",
         encoding="utf-8",
     )
     (tmp_path / "runtime_scenario.js").write_text(
-        "const { calculate } = require('./logic');\\n"
-        "console.log(calculate());\\n",
+        "const { calculate } = require('./logic');\n"
+        "console.log(calculate());\n",
         encoding="utf-8",
     )
     (tmp_path / "logic.js").write_text(
-        "exports.calculate = () => 42;\\n",
+        "exports.calculate = () => 42;\n",
         encoding="utf-8",
     )
 
@@ -179,8 +179,8 @@ def test_node_runtime_rejects_explicit_jsx_scenario_with_guidance(tmp_path, monk
     from architecture_model.node_runtime_adapter import _resolve_node_executable
 
     (tmp_path / "index.js").write_text(
-        "import React from 'react';\\n"
-        "root.render(<React.StrictMode><App /></React.StrictMode>);\\n",
+        "import React from 'react';\n"
+        "root.render(<React.StrictMode><App /></React.StrictMode>);\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
