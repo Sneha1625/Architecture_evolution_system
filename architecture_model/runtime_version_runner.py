@@ -136,6 +136,21 @@ def discover_python_entrypoints(worktree_path):
         if any(marker in lowered for marker in server_markers):
             continue
 
+        # Hardware-dependent demos (camera, microphone, serial devices) cannot
+        # be executed reliably in an isolated architecture-comparison worker.
+        # In particular, attendance/vision applications often terminate with
+        # SystemExit when no physical camera is available. Keep them in static
+        # analysis, but do not auto-select them as runtime scenarios.
+        camera_signals = (
+            "cv2.videocapture",
+            "videocapture(",
+            "could not open camera source",
+            "camera source",
+            "cap_dshow",
+        )
+        if sum(signal in lowered for signal in camera_signals) >= 2:
+            continue
+
         has_main_guard = False
         has_cli_signal = False
         has_direct_main_call = False
