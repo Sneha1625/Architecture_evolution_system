@@ -45,11 +45,11 @@ def _render_runtime_evolution(repository_path):
     )
     st.info(
         "Runtime V1/V2 execution evidence currently supports Python, JavaScript, "
-        "erasable TypeScript, Ruby, Go, Java, C, and C++ when the required toolchains are installed. "
-        "Go and C/C++ use compiler coverage to identify executed source files (not call edges "
-        "or call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
+        "erasable TypeScript, Ruby, Go, Java, C, C++, and C# when the required toolchains are installed. "
+        "Go, C/C++, and C# use compiler coverage to identify executed source files (not call "
+        "edges or call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
         "counts). Static architecture recovery supports all 11 language families. "
-        "C#, Rust, and PHP remain static-analysis only."
+        "Rust and PHP remain static-analysis only."
     )
 
     try:
@@ -104,13 +104,13 @@ def _render_runtime_evolution(repository_path):
                 "TypeScript, add runtime_scenario.js or runtime_scenario.ts; "
                 "for Ruby, add runtime_scenario.rb; for Go, use a bounded package-main file "
                 "such as main.go with go.mod; for Java, select a class with static main; "
-                "for C/C++, select a source file defining main(). The same scenario "
-                "must exist in both commits."
+                "for C/C++, select a source file defining main(); for C#, select a bounded "
+                "console application's .csproj file. The same scenario must exist in both commits."
             )
             return
 
         preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
+            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
              if name in scenario_options),
             scenario_options[0],
         )
@@ -120,7 +120,7 @@ def _render_runtime_evolution(repository_path):
             index=scenario_options.index(preferred_scenario),
             help=(
                 "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, Go, Java, C, or C++ "
-                "scenario that exercises application logic. Go and C/C++ report executed "
+                "scenario that exercises application logic. Go, C/C++, and C# report executed "
                 "source files through coverage; Java reports sampled stack evidence, not "
                 "exact call counts. Long-running web-server launchers are excluded."
             ),
@@ -161,7 +161,7 @@ def _render_runtime_evolution(repository_path):
                 "The selected versions do not share a runnable supported scenario. "
                 "Your static architecture graph, inferred relationships, dependency "
                 "inventory, and snapshot history remain available above. "
-                "Runtime tracing for C#, Rust, and PHP is not implemented yet. "
+                "Runtime tracing for Rust and PHP is not implemented yet. "
                 "TypeScript requires syntax that Node.js "
                 "can strip without a separate build configuration."
             )
@@ -236,6 +236,11 @@ def _render_runtime_evolution(repository_path):
         st.info(
             "C/C++ runtime evidence uses GCC/gcov coverage to identify executed source "
             "files. It does not collect runtime call relationships or call counts."
+        )
+    elif Path(versions["scenario"]).suffix.lower() == ".csproj":
+        st.info(
+            "C# runtime evidence uses dotnet-coverage to identify executed source files. "
+            "It does not collect runtime call relationships or call counts."
         )
 
     # ========================================================
