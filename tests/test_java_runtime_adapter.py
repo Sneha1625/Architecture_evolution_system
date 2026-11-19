@@ -93,7 +93,10 @@ def test_jdk_resolver_uses_java_home_before_path(tmp_path, monkeypatch):
     bin_dir.mkdir()
     names = ("java.exe", "javac.exe", "jfr.exe") if os.name == "nt" else ("java", "javac", "jfr")
     for name in names:
-        (bin_dir / name).write_text("", encoding="utf-8")
+        tool = bin_dir / name
+        tool.write_text("", encoding="utf-8")
+        if os.name != "nt":
+            tool.chmod(0o755)
 
     monkeypatch.setenv("JAVA_HOME", str(tmp_path))
     monkeypatch.setattr(shutil, "which", lambda _name: None)
