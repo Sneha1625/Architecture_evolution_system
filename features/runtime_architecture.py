@@ -6,6 +6,7 @@ runtime architectures from two Git worktrees (V1 and V2).
 """
 
 import streamlit as st
+import pandas as pd
 from pathlib import Path
 import subprocess
 import tempfile
@@ -450,8 +451,13 @@ def _render_runtime_evolution(repository_path):
 
     metric_cols[2].metric(
         "Observed Calls",
-        new_runtime["total_calls"],
-        delta=comparison["call_difference"],
+        "Not collected" if coverage_only else new_runtime["total_calls"],
+        delta=None if coverage_only else comparison["call_difference"],
+        help=(
+            "This language adapter reports executed source-file coverage, not runtime call counts."
+            if coverage_only
+            else "Call events recorded while the selected scenario executed."
+        ),
     )
 
     # ========================================================
@@ -462,6 +468,11 @@ def _render_runtime_evolution(repository_path):
         get_runtime_evolution_summary(
             comparison
         )
+    )
+    st.caption(
+        f"Executed-function overlap: {len(comparison.get('executed_function_changes', {}).get('common', []))} "
+        "function names were observed in both versions. Zero changes means no difference was observed "
+        "for this selected scenario; it does not prove that function implementations are identical."
     )
 
     # ========================================================
@@ -479,26 +490,39 @@ def _render_runtime_evolution(repository_path):
         "activity between V1 and V2."
     )
 
-    chart_data = {
-        "V1": [
-            old_runtime["modules"],
-            old_runtime["relationships"],
-            old_runtime["total_calls"],
-        ],
-        "V2": [
-            new_runtime["modules"],
-            new_runtime["relationships"],
-            new_runtime["total_calls"],
-        ],
-    }
+    scenario_suffix = Path(versions["scenario"]).suffix.lower()
+    scenario_name = Path(versions["scenario"]).name.lower()
+    coverage_only = (
+        scenario_suffix in {".go", ".c", ".cc", ".cpp", ".cxx", ".c++", ".cs"}
+        or scenario_name == "cargo.toml"
+        or scenario_suffix == ".csproj"
+    )
+    observed_calls_v1 = None if coverage_only else old_runtime["total_calls"]
+    observed_calls_v2 = None if coverage_only else new_runtime["total_calls"]
+
+    chart_data = pd.DataFrame(
+        [
+            {"Metric": "Modules", "V1": old_runtime["modules"], "V2": new_runtime["modules"]},
+            {"Metric": "Relationships", "V1": old_runtime["relationships"], "V2": new_runtime["relationships"]},
+            {"Metric": "Observed Calls", "V1": observed_calls_v1, "V2": observed_calls_v2},
+        ]
+    )
 
     st.bar_chart(
         chart_data,
+        x="Metric",
+        y=["V1", "V2"],
+        stack=False,
         horizontal=False,
     )
 
     st.caption(
-        "Chart order: Modules → Relationships → Observed Calls (Go coverage does not provide call counts)"
+        "Grouped bars compare V1 and V2 independently. "
+        + (
+            "Observed call counts are not collected by this language's coverage adapter."
+            if coverage_only
+            else "Observed Calls are execution events recorded by the selected runtime adapter."
+        )
     )
 
     # ========================================================
