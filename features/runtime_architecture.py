@@ -39,6 +39,7 @@ def _compare_static_commit_architectures(repository_path, v1_commit, v2_commit):
         root = Path(temp)
         worktrees = []
         snapshots = []
+        parsed_stats = []
         try:
             for label, commit in (("v1", v1_commit), ("v2", v2_commit)):
                 worktree = root / label
@@ -54,6 +55,15 @@ def _compare_static_commit_architectures(repository_path, v1_commit, v2_commit):
                     or item.get("classes") or item.get("imports")
                 ]
                 snapshots.append(recover_architecture(parsed))
+                parsed_stats.append({
+                    "files": len(parsed),
+                    "functions": sum(
+                        len(item.get("functions", []))
+                        + sum(len(cls.get("methods", [])) for cls in item.get("classes", []))
+                        for item in parsed
+                    ),
+                    "classes": sum(len(item.get("classes", [])) for item in parsed),
+                })
 
             old, new = snapshots
             old_components = {item.name: item for item in old.components}
@@ -71,18 +81,14 @@ def _compare_static_commit_architectures(repository_path, v1_commit, v2_commit):
             }
             return {
                 "v1": {
-                    "files": len(parsed_files_for_snapshot(old, repository, worktrees[0])),
+                    **parsed_stats[0],
                     "components": len(old.components),
                     "relationships": len(old.relationships),
-                    "functions": sum(len(item.functions) for item in old.components),
-                    "classes": sum(len(item.classes) for item in old.components),
                 },
                 "v2": {
-                    "files": len(parsed_files_for_snapshot(new, repository, worktrees[1])),
+                    **parsed_stats[1],
                     "components": len(new.components),
                     "relationships": len(new.relationships),
-                    "functions": sum(len(item.functions) for item in new.components),
-                    "classes": sum(len(item.classes) for item in new.components),
                 },
                 "components_added": sorted(new_names - old_names),
                 "components_removed": sorted(old_names - new_names),
@@ -99,18 +105,6 @@ def _compare_static_commit_architectures(repository_path, v1_commit, v2_commit):
                 ["git", "-C", str(repository), "worktree", "prune"],
                 capture_output=True, text=True, timeout=30,
             )
-
-
-def parsed_files_for_snapshot(snapshot, repository, worktree):
-    """Count source files represented by recovered components."""
-    files = set()
-    for component in snapshot.components:
-        for file_path in component.files:
-            try:
-                files.add(Path(file_path).resolve().relative_to(worktree.resolve()).as_posix())
-            except (ValueError, OSError):
-                files.add(str(file_path))
-    return len(files)
 
 
 def _display_quick_static_comparison(result, v1_commit, v2_commit):
