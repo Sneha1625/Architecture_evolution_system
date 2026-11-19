@@ -8,10 +8,14 @@ files with the installed JDK and runs one explicitly selected main class.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import tempfile
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 
 from architecture_model.runtime_model import RuntimeArchitecture, RuntimeCall
@@ -83,8 +87,110 @@ def _source_for_class(class_name: str, root: Path):
     return matches[0].resolve() if len(matches) == 1 else None
 
 
+def _find_jdk_binaries(root: Path):
+    """Find a complete JDK toolchain under a directory."""
+    root = Path(root)
+    names = ("java.exe", "javac.exe", "jfr.exe") if os.name == "nt" else ("java", "javac", "jfr")
+    matches = {}
+    for name in names:
+        candidates = list(root.rglob(name))
+        if candidates:
+            matches[name] = candidates[0]
+    if len(matches) != len(names):
+        return None
+    return matches
+
+
+def _provision_temurin_jdk():
+    """Download and cache Temurin 21 on demand when no full JDK is installed.
+
+    The download is performed once per user profile. Set
+    ARCHITECTURE_AUTO_INSTALL_JDK=0 to disable automatic provisioning.
+    """
+    if os.environ.get("ARCHITECTURE_AUTO_INSTALL_JDK", "1").strip().lower() in {"0", "false", "no"}:
+        raise RuntimeError(
+            "Java runtime tracing needs a full JDK (java, javac and jfr). "
+            "Automatic JDK setup is disabled by ARCHITECTURE_AUTO_INSTALL_JDK=0."
+        )
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    cache_base = Path(local_app_data) if local_app_data else Path.home() / ".cache"
+    cache_root = cache_base / "ArchitectureIntelligence" / "toolchains" / "temurin-21"
+    jdk_home = cache_root / "jdk"
+    cached = _find_jdk_binaries(jdk_home) if jdk_home.is_dir() else None
+    if cached:
+        return cached
+
+    cache_root.mkdir(parents=True, exist_ok=True)
+    download_url = (
+        "https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/"
+        "jdk/hotspot/normal/eclipse"
+        if os.name == "nt" else
+        "https://api.adoptium.net/v3/binary/latest/21/ga/"
+        + ("mac" if os.uname().sysname == "Darwin" else "linux")
+        + "/"
+        + ("aarch64" if os.uname().machine.lower() in {"arm64", "aarch64"} else "x64")
+        + "/jdk/hotspot/normal/eclipse"
+    )
+
+    with tempfile.TemporaryDirectory(prefix="architecture_jdk_setup_") as temporary:
+        temporary_path = Path(temporary)
+        archive = temporary_path / "temurin-jdk.zip"
+        try:
+            with urllib.request.urlopen(download_url, timeout=45) as response, archive.open("wb") as output:
+                total = 0
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > 600 * 1024 * 1024:
+                        raise RuntimeError("The JDK download exceeded the 600 MB safety limit.")
+                    output.write(chunk)
+        except (OSError, urllib.error.URLError) as error:
+            raise RuntimeError(
+                "Could not download the Java JDK automatically. Check your internet connection "
+                "and allow access to api.adoptium.net, then retry. "
+                "You can also install a JDK 21 manually."
+            ) from error
+
+        extraction = temporary_path / "extracted"
+        extraction.mkdir()
+        try:
+            with zipfile.ZipFile(archive) as bundle:
+                for member in bundle.infolist():
+                    destination = (extraction / member.filename).resolve()
+                    if not destination.is_relative_to(extraction.resolve()):
+                        raise RuntimeError("The downloaded JDK archive contains an unsafe path.")
+                bundle.extractall(extraction)
+        except (OSError, zipfile.BadZipFile) as error:
+            raise RuntimeError("The downloaded Java JDK archive could not be extracted.") from error
+
+        binaries = _find_jdk_binaries(extraction)
+        if not binaries:
+            raise RuntimeError("The downloaded archive did not contain java, javac and jfr.")
+        extracted_home = next(path.parent.parent for path in binaries.values())
+        if jdk_home.exists():
+            shutil.rmtree(jdk_home, ignore_errors=True)
+        shutil.move(str(extracted_home), str(jdk_home))
+
+    installed = _find_jdk_binaries(jdk_home)
+    if not installed:
+        raise RuntimeError("Java JDK setup finished, but the required JDK tools were not found.")
+    return installed
+
+
+def _resolve_java_tools():
+    """Use a system JDK when available, otherwise provision cached Temurin 21."""
+    names = ("java.exe", "javac.exe", "jfr.exe") if os.name == "nt" else ("java", "javac", "jfr")
+    found = {name: shutil.which(name[:-4] if name.endswith(".exe") else name) for name in names}
+    if all(found.values()):
+        return found
+    return _provision_temurin_jdk()
+
+
 def run_java_version(worktree_path, scenario, timeout=300):
-    """Compile and execute one Java main class, collecting JFR stack samples."""
+    """Compile and execute one Java main class, provisioning a JDK if needed."""
     root = Path(worktree_path).resolve()
     scenario_path = (root / scenario).resolve()
     try:
@@ -94,11 +200,10 @@ def run_java_version(worktree_path, scenario, timeout=300):
     if not scenario_path.is_file() or scenario_path.suffix.lower() != ".java":
         raise FileNotFoundError(f"Java runtime scenario not found: {scenario_path}")
 
-    javac = shutil.which("javac")
-    java = shutil.which("java")
-    jfr = shutil.which("jfr")
-    if not javac or not java or not jfr:
-        raise RuntimeError("A full JDK (javac, java, and jfr) is required for Java runtime tracing.")
+    java_tools = _resolve_java_tools()
+    java = str(java_tools["java.exe" if os.name == "nt" else "java"])
+    javac = str(java_tools["javac.exe" if os.name == "nt" else "javac"])
+    jfr = str(java_tools["jfr.exe" if os.name == "nt" else "jfr"])
 
     scenario_source = scenario_path.read_text(encoding="utf-8", errors="ignore")
     main_class = _java_main_class(scenario_source)
