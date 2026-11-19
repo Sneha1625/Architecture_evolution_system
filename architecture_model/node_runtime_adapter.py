@@ -10,6 +10,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+import tarfile
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -78,6 +82,137 @@ def _project_module(url, root):
     return relative.as_posix()
 
 
+
+def _find_node_binary(root: Path):
+    """Find a Node.js executable in a cached toolchain directory."""
+    name = "node.exe" if os.name == "nt" else "node"
+    matches = list(Path(root).rglob(name))
+    return matches[0] if matches else None
+
+
+def _provision_node_runtime():
+    """Download and cache the Node.js 22 LTS runtime on demand."""
+    if os.environ.get("ARCHITECTURE_AUTO_INSTALL_NODE", "1").strip().lower() in {"0", "false", "no"}:
+        raise RuntimeError(
+            "JavaScript runtime tracing needs Node.js 22 or newer. "
+            "Automatic setup is disabled by ARCHITECTURE_AUTO_INSTALL_NODE=0."
+        )
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    cache_base = Path(local_app_data) if local_app_data else Path.home() / ".cache"
+    cache_root = cache_base / "ArchitectureIntelligence" / "toolchains" / "node-22"
+    node_home = cache_root / "runtime"
+    cached = _find_node_binary(node_home) if node_home.is_dir() else None
+    if cached:
+        return str(cached)
+
+    if os.name == "nt":
+        machine = os.environ.get("PROCESSOR_ARCHITECTURE", "AMD64").lower()
+        platform_name = "win-arm64" if machine in {"arm64", "aarch64"} else "win-x64"
+        archive_suffix = ".zip"
+    elif __import__("platform").system() == "Darwin":
+        machine = __import__("platform").machine().lower()
+        platform_name = "darwin-arm64" if machine in {"arm64", "aarch64"} else "darwin-x64"
+        archive_suffix = ".tar.xz"
+    else:
+        machine = __import__("platform").machine().lower()
+        platform_name = "linux-arm64" if machine in {"arm64", "aarch64"} else "linux-x64"
+        archive_suffix = ".tar.xz"
+
+    cache_root.mkdir(parents=True, exist_ok=True)
+
+    def download(url, destination, limit):
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "Architecture-Intelligence-System/1.0"}
+        )
+        with urllib.request.urlopen(request, timeout=90) as response, destination.open("wb") as output:
+            total = 0
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > limit:
+                    raise RuntimeError("The Node.js download exceeded the safety limit.")
+                output.write(chunk)
+
+    with tempfile.TemporaryDirectory(prefix="architecture_node_setup_") as temporary:
+        temporary_path = Path(temporary)
+        archive = temporary_path / ("node-runtime" + archive_suffix)
+        try:
+            # The official distribution index identifies the current Node 22 LTS
+            # release and avoids hard-coding a patch version.
+            index_request = urllib.request.Request(
+                "https://nodejs.org/dist/index.json",
+                headers={"User-Agent": "Architecture-Intelligence-System/1.0"},
+            )
+            with urllib.request.urlopen(index_request, timeout=30) as response:
+                releases = json.loads(response.read().decode("utf-8"))
+            release = next(
+                item for item in releases
+                if item.get("version", "").startswith("v22.")
+                and platform_name in item.get("files", [])
+            )
+            version = release["version"]
+            archive_name = f"node-{version}-{platform_name}{archive_suffix}"
+            download(
+                f"https://nodejs.org/dist/{version}/{archive_name}",
+                archive,
+                150 * 1024 * 1024,
+            )
+        except (OSError, urllib.error.URLError, ValueError, KeyError, StopIteration, RuntimeError) as error:
+            raise RuntimeError(
+                "Could not download Node.js 22 automatically. Check internet access to "
+                "nodejs.org and retry. You can also install Node.js 22 or newer manually. "
+                f"Details: {error}"
+            ) from error
+
+        if not archive.is_file() or archive.stat().st_size == 0:
+            raise RuntimeError("The Node.js download returned an empty archive.")
+
+        extraction = temporary_path / "extracted"
+        extraction.mkdir()
+        try:
+            if archive_suffix == ".zip":
+                with zipfile.ZipFile(archive) as bundle:
+                    for member in bundle.infolist():
+                        destination = (extraction / member.filename).resolve()
+                        if not destination.is_relative_to(extraction.resolve()):
+                            raise RuntimeError("The Node.js archive contains an unsafe path.")
+                    bundle.extractall(extraction)
+            else:
+                with tarfile.open(archive, "r:xz") as bundle:
+                    for member in bundle.getmembers():
+                        destination = (extraction / member.name).resolve()
+                        if not destination.is_relative_to(extraction.resolve()):
+                            raise RuntimeError("The Node.js archive contains an unsafe path.")
+                        if member.issym() or member.islnk():
+                            raise RuntimeError("The Node.js archive contains an unsupported link.")
+                    bundle.extractall(extraction)
+        except (OSError, zipfile.BadZipFile, tarfile.TarError) as error:
+            raise RuntimeError("The downloaded Node.js archive could not be extracted.") from error
+
+        binary = _find_node_binary(extraction)
+        if not binary:
+            raise RuntimeError("The downloaded archive did not contain the Node.js executable.")
+        extracted_home = binary.parent.parent if binary.parent.name == "bin" else binary.parent
+        if node_home.exists():
+            shutil.rmtree(node_home, ignore_errors=True)
+        shutil.move(str(extracted_home), str(node_home))
+
+    installed = _find_node_binary(node_home)
+    if not installed:
+        raise RuntimeError("Node.js setup finished, but the executable was not found.")
+    return str(installed)
+
+
+def _resolve_node_executable():
+    """Use Node.js from PATH or provision a cached Node 22 LTS runtime."""
+    node = shutil.which("node")
+    if node:
+        return node
+    return _provision_node_runtime()
+
 def run_node_version(worktree_path, scenario, timeout=300):
     """Execute one JS scenario and return project-only runtime evidence."""
     root = Path(worktree_path).resolve()
@@ -88,9 +223,7 @@ def run_node_version(worktree_path, scenario, timeout=300):
         raise ValueError("Runtime scenario must be inside the selected repository.") from error
     if not scenario_path.is_file() or scenario_path.suffix.lower() not in NODE_EXTENSIONS:
         raise FileNotFoundError(f"JavaScript runtime scenario not found: {scenario_path}")
-    node = shutil.which("node")
-    if not node:
-        raise RuntimeError("Node.js is required for JavaScript runtime tracing but was not found on PATH.")
+    node = _resolve_node_executable()
 
     architecture = RuntimeArchitecture(entry_point=scenario)
     architecture.modules.add(scenario_path.relative_to(root).as_posix())
