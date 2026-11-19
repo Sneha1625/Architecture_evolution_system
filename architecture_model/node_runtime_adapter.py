@@ -27,7 +27,7 @@ NODE_EXTENSIONS = {".js", ".mjs", ".cjs", ".jsx", ".ts", ".mts", ".cts", ".tsx"}
 # fragment syntax so frontend component entrypoints are not selected as raw
 # Node execution scenarios.
 _JSX_OPENING_TAG = re.compile(
-    r"<(?:[A-Za-z][A-Za-z0-9_.:-]*)(?:\\s[^<>]*?)?\\s*/?>|<>",
+    r"<(?:[A-Za-z][A-Za-z0-9_.:-]*)(?:\s[^<>]*?)?\s*/?>|<>",
     re.DOTALL,
 )
 _JSX_CLOSING_TAG = re.compile(r"</(?:[A-Za-z][A-Za-z0-9_.:-]*|)>")
