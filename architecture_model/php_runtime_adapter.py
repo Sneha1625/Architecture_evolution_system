@@ -78,19 +78,26 @@ def _parse_xdebug_trace(trace_path, root, entry_point):
             architecture.modules.add(module)
         if included_file:
             architecture.modules.add(included_file)
+        normalized_function = function_name.lower().replace("()", "")
+        callee_module = (
+            included_file
+            if normalized_function in {"include", "include_once", "require", "require_once"}
+            and included_file
+            else module
+        )
         current = {
             "function": function_name,
-            "module": module,
+            "module": callee_module or module,
         }
         parent = stack.get(level - 1)
-        if parent and parent.get("module") and module:
+        if parent and parent.get("module") and current.get("module"):
             architecture.add_call(RuntimeCall(
                 caller_module=parent["module"],
                 caller_function=parent["function"],
-                callee_module=module,
+                callee_module=current["module"],
                 callee_function=function_name,
                 caller_file=parent["module"],
-                callee_file=module,
+                callee_file=current["module"],
             ))
         stack[level] = current
         # Remove deeper frames if a trace reuses a level after a return.
