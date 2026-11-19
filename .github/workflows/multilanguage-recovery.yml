@@ -91,7 +91,7 @@ jobs:
           php-version: "8.3"
           extensions: xdebug
       - name: Install Rust coverage tool
-        run: cargo install cargo-llvm-cov --locked
+        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install test runner
         run: python -m pip install --upgrade pytest tree-sitter-language-pack
       - name: Compile changed Python modules
