@@ -132,19 +132,13 @@ def run_php_version(worktree_path, scenario, timeout=300):
 
     with tempfile.TemporaryDirectory(prefix="architecture_php_runtime_") as temporary:
         temp = Path(temporary)
-        trace_path = temp / "runtime_trace"
-        prepend = temp / "trace_prepend.php"
-        prepend.write_text(
-            "<?php\n"
-            f"xdebug_start_trace({str(trace_path)!r}, XDEBUG_TRACE_COMPUTERIZED | XDEBUG_TRACE_NAKED_FILENAME);\n"
-            "register_shutdown_function(function () { xdebug_stop_trace(); });\n",
-            encoding="utf-8",
-        )
+        trace_path = temp / "runtime_trace.xt"
         command = [
             php,
             "-d", "xdebug.mode=trace",
-            "-d", "xdebug.start_with_request=no",
-            "-d", f"auto_prepend_file={prepend}",
+            "-d", "xdebug.start_with_request=yes",
+            "-d", f"xdebug.output_dir={temp}",
+            "-d", "xdebug.trace_output_name=runtime_trace",
             str(scenario_path),
         ]
         environment = os.environ.copy()
@@ -161,7 +155,7 @@ def run_php_version(worktree_path, scenario, timeout=300):
         if process.returncode != 0:
             details = (process.stderr or process.stdout or "PHP exited unsuccessfully")[-5000:]
             raise RuntimeError(f"PHP runtime scenario failed ({process.returncode}):\n{details}")
-        actual_trace = trace_path if trace_path.is_file() else Path(str(trace_path) + ".xt")
+        actual_trace = trace_path if trace_path.is_file() else temp / "runtime_trace"
         if not actual_trace.is_file():
             details = (process.stderr or process.stdout or "No PHP output")[-3000:]
             raise RuntimeError(
