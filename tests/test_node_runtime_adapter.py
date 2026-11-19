@@ -147,6 +147,50 @@ def test_typescript_runtime_adapter_detects_executed_modules(tmp_path):
 
 
 
+
+def test_node_entrypoint_discovery_ignores_react_jsx_frontend(tmp_path):
+    frontend = tmp_path / "client" / "src"
+    frontend.mkdir(parents=True)
+    (frontend / "index.js").write_text(
+        "import React from 'react';\\n"
+        "import { createRoot } from 'react-dom/client';\\n"
+        "createRoot(document.getElementById('root')).render(\\n"
+        "  <React.StrictMode><App /></React.StrictMode>\\n"
+        ");\\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "runtime_scenario.js").write_text(
+        "const { calculate } = require('./logic');\\n"
+        "console.log(calculate());\\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "logic.js").write_text(
+        "exports.calculate = () => 42;\\n",
+        encoding="utf-8",
+    )
+
+    candidates = discover_node_entrypoints(tmp_path)
+
+    assert "runtime_scenario.js" in candidates
+    assert "client/src/index.js" not in candidates
+
+
+def test_node_runtime_rejects_explicit_jsx_scenario_with_guidance(tmp_path, monkeypatch):
+    from architecture_model.node_runtime_adapter import _resolve_node_executable
+
+    (tmp_path / "index.js").write_text(
+        "import React from 'react';\\n"
+        "root.render(<React.StrictMode><App /></React.StrictMode>);\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter._resolve_node_executable",
+        lambda: pytest.fail("JSX should be rejected before Node.js is launched"),
+    )
+
+    with pytest.raises(RuntimeError, match="contains JSX"):
+        run_node_version(tmp_path, "index.js", timeout=10)
+
 def test_node_binary_discovery_finds_cached_executable(tmp_path):
     from architecture_model.node_runtime_adapter import _find_node_binary
     import os
