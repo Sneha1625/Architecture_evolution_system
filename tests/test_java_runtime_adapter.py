@@ -58,3 +58,38 @@ def test_java_entrypoint_discovery_excludes_tests_and_servers(tmp_path):
     assert "Main.java" in candidates
     assert "Server.java" not in candidates
     assert "MainTest.java" not in candidates
+
+
+def test_jdk_tool_discovery_requires_complete_toolchain(tmp_path):
+    from architecture_model.java_runtime_adapter import _find_jdk_binaries
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    names = ("java.exe", "javac.exe", "jfr.exe") if __import__("os").name == "nt" else ("java", "javac", "jfr")
+    for name in names[:2]:
+        (bin_dir / name).write_text("", encoding="utf-8")
+
+    assert _find_jdk_binaries(tmp_path) is None
+
+    (bin_dir / names[2]).write_text("", encoding="utf-8")
+    found = _find_jdk_binaries(tmp_path)
+    assert found is not None
+    assert set(found) == set(names)
+
+
+def test_jdk_resolver_uses_java_home_before_path(tmp_path, monkeypatch):
+    import os
+    import shutil
+    from architecture_model.java_runtime_adapter import _resolve_java_tools
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    names = ("java.exe", "javac.exe", "jfr.exe") if os.name == "nt" else ("java", "javac", "jfr")
+    for name in names:
+        (bin_dir / name).write_text("", encoding="utf-8")
+
+    monkeypatch.setenv("JAVA_HOME", str(tmp_path))
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    found = _resolve_java_tools()
+    assert all(path.parent == bin_dir for path in found.values())
