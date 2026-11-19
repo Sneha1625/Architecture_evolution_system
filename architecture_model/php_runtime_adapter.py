@@ -51,6 +51,8 @@ def _inside_project(filename, root):
     if not filename:
         return None
     path = Path(filename)
+    if not path.is_absolute():
+        path = root / path
     try:
         resolved = path.resolve()
         return resolved.relative_to(root).as_posix()
