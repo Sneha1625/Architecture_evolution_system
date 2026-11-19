@@ -102,12 +102,13 @@ def _render_runtime_evolution(repository_path):
                 "For Python, add runtime_scenario.py; for JavaScript or erasable "
                 "TypeScript, add runtime_scenario.js or runtime_scenario.ts; "
                 "for Ruby, add runtime_scenario.rb; for Go, use a bounded package-main file "
-                "such as main.go with go.mod. The same scenario must exist in both commits."
+                "such as main.go with go.mod; for Java, select a class with static main. "
+                "The same scenario must exist in both commits."
             )
             return
 
         preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go")
+            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java")
              if name in scenario_options),
             scenario_options[0],
         )
@@ -116,10 +117,10 @@ def _render_runtime_evolution(repository_path):
             options=scenario_options,
             index=scenario_options.index(preferred_scenario),
             help=(
-                "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, or Go "
-                "scenario that exercises application logic. Go reports executed "
-                "source files through coverage, not function-call relationships. "
-                "Long-running web-server launchers are excluded."
+                "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, Go, or Java "
+                "scenario that exercises application logic. Go reports executed source "
+                "files through coverage; Java reports sampled stack evidence, not exact "
+                "call counts. Long-running web-server launchers are excluded."
             ),
             key="runtime_selected_scenario",
         )
@@ -158,7 +159,7 @@ def _render_runtime_evolution(repository_path):
                 "The selected versions do not share a runnable supported scenario. "
                 "Your static architecture graph, inferred relationships, dependency "
                 "inventory, and snapshot history remain available above. "
-                "Runtime tracing for Java, C, C++, C#, Rust, and PHP is not implemented yet. "
+                "Runtime tracing for C, C++, C#, Rust, and PHP is not implemented yet. "
                 "TypeScript requires syntax that Node.js "
                 "can strip without a separate build configuration."
             )
@@ -222,6 +223,12 @@ def _render_runtime_evolution(repository_path):
             "Go runtime evidence uses compiler-instrumented coverage. The module list "
             "shows project source files reached during execution; Go function-call "
             "relationships and call counts are not collected by this adapter."
+        )
+    elif Path(versions["scenario"]).suffix.lower() == ".java":
+        st.info(
+            "Java runtime evidence comes from sampled Java Flight Recorder stacks. "
+            "The observed stack relationships are sampling evidence, not exact "
+            "function invocation counts."
         )
 
     # ========================================================
