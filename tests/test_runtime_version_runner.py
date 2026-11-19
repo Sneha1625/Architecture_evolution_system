@@ -28,9 +28,9 @@ def test_runtime_trace_includes_module_scope_entrypoint_and_helper(tmp_path):
 
 def test_runtime_scenario_receives_multiline_stdin(tmp_path):
     (tmp_path / "interactive.py").write_text(
-        "first = int(input('Enter first number: '))\\n"
-        "second = int(input('Enter second number: '))\\n"
-        "print(first + second)\\n",
+        "first = int(input('Enter first number: '))\n"
+        "second = int(input('Enter second number: '))\n"
+        "print(first + second)\n",
         encoding="utf-8",
     )
 
@@ -38,7 +38,7 @@ def test_runtime_scenario_receives_multiline_stdin(tmp_path):
         tmp_path,
         scenario="interactive.py",
         timeout=30,
-        runtime_input="2\\n3\\n",
+        runtime_input="2\n3\n",
     )
 
     assert "interactive" in architecture.modules
