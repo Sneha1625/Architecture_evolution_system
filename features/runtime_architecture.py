@@ -526,6 +526,26 @@ def _render_runtime_evolution(repository_path):
     )
 
     # ========================================================
+    # EXECUTED FUNCTION COVERAGE
+    # ========================================================
+
+    executed_changes = comparison.get("executed_function_changes", {"added": [], "removed": [], "common": []})
+    st.markdown("#### Executed Function Coverage")
+    st.caption(
+        "Functions listed here actually entered during this scenario. This is separate from "
+        "static functions that exist in the source but were not executed."
+    )
+    function_cols = st.columns(3)
+    function_cols[0].metric("Functions executed in V1", summary.get("functions_executed_v1", 0))
+    function_cols[1].metric("Functions executed in V2", summary.get("functions_executed_v2", 0))
+    function_cols[2].metric("Newly executed functions", summary.get("functions_added", 0))
+    with st.expander("Executed function changes", expanded=True):
+        st.write("**Added in V2**")
+        st.write(executed_changes.get("added") or ["None"])
+        st.write("**No longer executed in V2**")
+        st.write(executed_changes.get("removed") or ["None"])
+
+    # ========================================================
     # MODULE CHANGES
     # ========================================================
 
