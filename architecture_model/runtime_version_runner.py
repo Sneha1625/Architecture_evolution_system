@@ -551,6 +551,7 @@ def run_version(
     worktree_path,
     scenario: str = DEFAULT_SCENARIO,
     timeout: int = 600,
+    runtime_input: str = "",
 ) -> RuntimeArchitecture:
     """
     Execute one runtime scenario inside one Git worktree.
@@ -619,6 +620,7 @@ def run_version(
                 cwd=str(worktree_path),
                 capture_output=True,
                 text=True,
+                input=runtime_input,
                 timeout=timeout,
             )
 
@@ -630,6 +632,9 @@ def run_version(
                 f"Worktree: {worktree_path}\n"
                 f"Scenario: {scenario}\n"
                 f"Timeout: {timeout} seconds\n"
+                "If this scenario expects keyboard input, enter the required values in "
+                "the Runtime Input field (one input per line) and retry. "
+                "Interactive input is closed after the supplied text to prevent indefinite waits.\n"
             ) from error
 
         if not output_file.exists():
@@ -974,6 +979,7 @@ def run_version_pair(
     v2_commit: str,
     scenario: str = DEFAULT_SCENARIO,
     timeout: int = 300,
+    runtime_input: str = "",
 ):
     """
     Execute the same Python entry point at two user-selected commits.
@@ -1046,8 +1052,8 @@ def run_version_pair(
                 v1_runtime = run_php_version(v1_path, scenario=scenario, timeout=timeout)
                 v2_runtime = run_php_version(v2_path, scenario=scenario, timeout=timeout)
             else:
-                v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout)
+                v1_runtime = run_version(v1_path, scenario=scenario, timeout=timeout, runtime_input=runtime_input)
+                v2_runtime = run_version(v2_path, scenario=scenario, timeout=timeout, runtime_input=runtime_input)
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
