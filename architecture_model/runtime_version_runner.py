@@ -1260,6 +1260,22 @@ def run_version_pair(
             validate_worktree(v1_path, scenario)
             validate_worktree(v2_path, scenario)
 
+            # Defend against a stale Streamlit selection or a caller that
+            # explicitly passes a hardware-dependent entry point. Discovery
+            # normally filters these, but never launch a physical-camera app
+            # in the isolated runtime worker.
+            if Path(scenario).suffix.lower() in {".py", ".pyw"} and (
+                _python_entrypoint_reaches_hardware_api(v1_path, scenario)
+                or _python_entrypoint_reaches_hardware_api(v2_path, scenario)
+            ):
+                raise ValueError(
+                    f"Runtime scenario '{scenario}' depends on a physical camera "
+                    "in at least one selected commit. Camera-dependent applications "
+                    "cannot be executed in the isolated runtime comparison. Choose "
+                    "a shared non-interactive CLI/runtime scenario instead; static "
+                    "architecture analysis remains available."
+                )
+
             # Resolve once from the combined V1/V2 requirements so both
             # snapshots run under the same Python version.
             pair_python = _select_python_for_pair(v1_path, v2_path, scenario)
