@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -40,6 +41,37 @@ DEFAULT_V1_PATH = PARENT_DIR / "runtime_v1"
 DEFAULT_V2_PATH = PARENT_DIR / "runtime_v2"
 
 DEFAULT_SCENARIO = ""
+
+
+# Python 3.13 removed several deprecated standard-library modules. These
+# redistributions restore the original import names inside the isolated
+# runtime environment, without modifying the user's Python installation or
+# the repository being analyzed.
+LEGACY_STDLIB_DISTRIBUTIONS = {
+    "aifc": "standard-aifc",
+    "asynchat": "standard-asynchat",
+    "asyncore": "standard-asyncore",
+    "audioop": "audioop-lts",
+    "cgi": "standard-cgi",
+    "cgitb": "standard-cgitb",
+    "chunk": "standard-chunk",
+    "crypt": "standard-crypt",
+    "imghdr": "standard-imghdr",
+    "mailcap": "standard-mailcap",
+    "nntplib": "standard-nntplib",
+    "pipes": "standard-pipes",
+    "sndhdr": "standard-sndhdr",
+    "sunau": "standard-sunau",
+    "telnetlib": "standard-telnetlib",
+    "uu": "standard-uu",
+    "xdrlib": "standard-xdrlib",
+}
+
+
+def _missing_module_name(error_text):
+    """Extract a missing import name from a Python exception message."""
+    match = re.search(r"No module named ['\"]([^'\"]+)['\"]", error_text or "")
+    return match.group(1).split(".", 1)[0] if match else None
 
 
 def discover_python_entrypoints(worktree_path):
@@ -473,13 +505,16 @@ def _prepare_runtime_interpreter(worktree_path: Path, scenario: str, environment
         if candidate.is_file() and candidate not in requirements_files:
             requirements_files.append(candidate)
 
-    # Preserve packages already available to the active interpreter when
-    # the repository does not declare its own requirements file.
-    if not requirements_files:
-        return Path(sys.executable), []
-
+    # Always use a temporary environment so compatibility backports can be
+    # installed without changing the user's interpreter. If the repository
+    # has no requirements file, expose the active environment's installed
+    # packages as a read-only baseline; pip additions remain in this venv.
     environment_path = Path(environment_path)
-    venv.EnvBuilder(with_pip=True, clear=True).create(str(environment_path))
+    venv.EnvBuilder(
+        with_pip=True,
+        clear=True,
+        system_site_packages=not requirements_files,
+    ).create(str(environment_path))
     interpreter = (
         environment_path / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     )
@@ -585,9 +620,10 @@ def run_version(
             environment_path,
         )
 
-        try:
-
-            process = subprocess.run(
+        def execute_scenario():
+            if output_file.exists():
+                output_file.unlink()
+            return subprocess.run(
                 [
                     str(interpreter),
                     str(tracer_file),
@@ -601,8 +637,9 @@ def run_version(
                 timeout=timeout,
             )
 
+        try:
+            process = execute_scenario()
         except subprocess.TimeoutExpired as error:
-
             raise RuntimeError(
                 "\nRuntime execution timed out.\n"
                 f"Worktree: {worktree_path}\n"
@@ -611,28 +648,67 @@ def run_version(
             ) from error
 
         if not output_file.exists():
-
             raise RuntimeError(
                 "Runtime trace was not generated."
                 "\n\n"
-                f"STDOUT:\n"
-                f"{process.stdout}"
+                f"STDOUT:\n{process.stdout}"
                 "\n\n"
-                f"STDERR:\n"
-                f"{process.stderr}"
+                f"STDERR:\n{process.stderr}"
             )
 
-        trace_data = json.loads(
-            output_file.read_text(
-                encoding="utf-8"
-            )
-        )
+        trace_data = json.loads(output_file.read_text(encoding="utf-8"))
+        execution_error = trace_data.get("error")
 
-        execution_error = (
-            trace_data.get(
-                "error"
-            )
-        )
+        # If an older repository imports a module removed from Python's
+        # standard library, install its official-style PyPI redistribution
+        # into this temporary environment and retry the exact same scenario.
+        # This keeps the observed execution genuine; no metrics are fabricated.
+        installed_compatibility = set()
+        while execution_error:
+            missing_module = _missing_module_name(execution_error)
+            distribution = LEGACY_STDLIB_DISTRIBUTIONS.get(missing_module)
+            if not distribution or distribution in installed_compatibility:
+                break
+
+            installed_compatibility.add(distribution)
+            try:
+                subprocess.run(
+                    [
+                        str(interpreter), "-m", "pip", "install",
+                        "--disable-pip-version-check",
+                        "--no-input",
+                        "--prefer-binary",
+                        "--retries", "2",
+                        "--timeout", "30",
+                        distribution,
+                    ],
+                    cwd=str(worktree_path),
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=install_timeout,
+                )
+                process = execute_scenario()
+                if not output_file.exists():
+                    raise RuntimeError(
+                        "Runtime trace was not generated after installing "
+                        f"the compatibility package {distribution}. "
+                        f"STDERR: {process.stderr}"
+                    )
+                trace_data = json.loads(output_file.read_text(encoding="utf-8"))
+                execution_error = trace_data.get("error")
+            except subprocess.CalledProcessError as error:
+                details = (error.stderr or error.stdout or str(error))[-4000:]
+                raise RuntimeError(
+                    f"Could not install Python compatibility package "
+                    f"{distribution} for removed standard-library module "
+                    f"{missing_module}:\\n{details}"
+                ) from error
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError(
+                    f"Installing Python compatibility package {distribution} "
+                    f"timed out after {install_timeout} seconds."
+                ) from error
 
         if execution_error:
 
@@ -657,9 +733,11 @@ def run_version(
                     if requirements_files
                     else (
                         "\nNo requirements.txt was found at the repository root "
-                        "or scenario directory. Add the missing dependency to a "
-                        "requirements.txt file and retry. Verify the distribution "
-                        "that provides the missing 'paddle' import."
+                        "or scenario directory. The temporary environment can still "
+                        "use packages from the active environment. If this is a "
+                        "third-party dependency, add its distribution to requirements.txt. "
+                        "If it is a project-local module, verify that its source file "
+                        "exists in this commit and that its import path is correct."
                     )
                 )
             )
