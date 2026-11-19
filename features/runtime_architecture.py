@@ -253,15 +253,7 @@ def _render_runtime_evolution(repository_path):
                 ),
                 key="runtime_selected_scenario",
             )
-        runtime_input = ""
-        if selected_scenario and Path(selected_scenario).suffix.lower() == ".py":
-            runtime_input = st.text_area(
-                "Runtime Input (optional)",
-                placeholder="Enter program input, one value per line. Example:\\n2\\n3",
-                help="For Python scripts that use input(), enter one value per line. These values are submitted together with the selected commits and supplied to both V1 and V2.",
-                key="runtime_scenario_stdin",
-            )
-
+        # Runtime input is supplied automatically by the runner when needed.
         run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
         run_comparison = st.form_submit_button("Run Runtime Comparison")
 
@@ -290,17 +282,6 @@ def _render_runtime_evolution(repository_path):
 
     if not selected_scenario:
         st.warning("Runtime comparison needs a common runnable scenario in both commits.")
-        return
-
-    if (
-        Path(selected_scenario).suffix.lower() == ".py"
-        and not runtime_input.strip()
-        and Path(selected_scenario).name.lower() in {"__main__.py", "main.py", "cli.py"}
-    ):
-        st.warning(
-            "This looks like an interactive Python entry point. Enter its required input "
-            "in Runtime Input above (one value per line) before running the comparison."
-        )
         return
 
     if Path(selected_scenario).name.lower() == "sample_project.py":
