@@ -89,16 +89,36 @@ def _source_for_class(class_name: str, root: Path):
 
 
 def _find_jdk_binaries(root: Path):
-    """Find a complete JDK toolchain under a directory."""
+    """Find the executable JDK tools from a JDK bin directory.
+
+    Some JDK distributions also contain an internal, non-executable file
+    named lib/jfr. Searching the whole tree and taking the first match can
+    select that file instead of the command-line bin/jfr launcher.
+    """
     root = Path(root)
     names = ("java.exe", "javac.exe", "jfr.exe") if os.name == "nt" else ("java", "javac", "jfr")
+    bin_directories = []
+    direct_bin = root / "bin"
+    if direct_bin.is_dir():
+        bin_directories.append(direct_bin)
+    bin_directories.extend(
+        path for path in root.rglob("bin")
+        if path.is_dir() and path not in bin_directories
+    )
+
     matches = {}
     for name in names:
-        candidates = list(root.rglob(name))
-        if candidates:
-            matches[name] = candidates[0]
-    if len(matches) != len(names):
-        return None
+        candidates = [directory / name for directory in bin_directories]
+        executable = next(
+            (
+                candidate for candidate in candidates
+                if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK))
+            ),
+            None,
+        )
+        if executable is None:
+            return None
+        matches[name] = executable
     return matches
 
 
