@@ -429,6 +429,16 @@ def _render_runtime_evolution(repository_path):
     old_runtime = comparison["old_runtime"]
     new_runtime = comparison["new_runtime"]
 
+    scenario_suffix = Path(versions["scenario"]).suffix.lower()
+    scenario_name = Path(versions["scenario"]).name.lower()
+    coverage_only = (
+        scenario_suffix in {".go", ".c", ".cc", ".cpp", ".cxx", ".c++", ".cs"}
+        or scenario_name == "cargo.toml"
+        or scenario_suffix == ".csproj"
+    )
+    observed_calls_v1 = None if coverage_only else old_runtime["total_calls"]
+    observed_calls_v2 = None if coverage_only else new_runtime["total_calls"]
+
     metric_cols = st.columns(3)
 
     metric_cols[0].metric(
@@ -489,16 +499,6 @@ def _render_runtime_evolution(repository_path):
         "Comparison of the runtime architecture size and execution "
         "activity between V1 and V2."
     )
-
-    scenario_suffix = Path(versions["scenario"]).suffix.lower()
-    scenario_name = Path(versions["scenario"]).name.lower()
-    coverage_only = (
-        scenario_suffix in {".go", ".c", ".cc", ".cpp", ".cxx", ".c++", ".cs"}
-        or scenario_name == "cargo.toml"
-        or scenario_suffix == ".csproj"
-    )
-    observed_calls_v1 = None if coverage_only else old_runtime["total_calls"]
-    observed_calls_v2 = None if coverage_only else new_runtime["total_calls"]
 
     chart_data = pd.DataFrame(
         [
