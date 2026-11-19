@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -174,17 +173,26 @@ def _provision_node_runtime():
                 )
                 with urllib.request.urlopen(checksums_request, timeout=30) as response:
                     checksums = response.read().decode("utf-8", errors="replace")
-                archive_pattern = re.compile(
-                    rf"^\\S+\\s+(node-v22\\.\\d+\\.\\d+-{re.escape(platform_name)}"
-                    rf"{re.escape(archive_suffix)})$",
-                    re.MULTILINE,
+                archive_name = next(
+                    (
+                        line.split()[-1]
+                        for line in checksums.splitlines()
+                        if line.split()
+                        and line.split()[-1].startswith("node-v22.")
+                        and line.split()[-1].endswith(f"-{platform_name}{archive_suffix}")
+                    ),
+                    None,
                 )
-                archive_match = archive_pattern.search(checksums)
-                if not archive_match:
+                if not archive_name:
+                    sample_names = [
+                        line.split()[-1]
+                        for line in checksums.splitlines()
+                        if line.split() and line.split()[-1].startswith("node-v22.")
+                    ][:8]
                     raise RuntimeError(
-                        f"No official Node.js 22 archive was listed for {platform_name}."
+                        f"No official Node.js 22 archive was listed for {platform_name}. "
+                        f"Available examples: {sample_names}"
                     )
-                archive_name = archive_match.group(1)
                 download(
                     f"https://nodejs.org/dist/latest-v22.x/{archive_name}",
                     archive,
