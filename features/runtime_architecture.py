@@ -244,9 +244,11 @@ def _render_runtime_evolution(repository_path):
                 options=scenario_options,
                 index=scenario_options.index(preferred_scenario),
                 help=(
-                    "Choose a bounded scenario that exercises application logic. "
-                    "Some language adapters report file coverage or sampled stacks rather "
-                    "than exact call counts."
+                    "Choose a bounded scenario that exercises the real application workflow, "
+                    "not just a small demo or import-only script. Ideally the scenario should "
+                    "call representative services, parsers, storage, and business-logic functions. "
+                    "The exact same scenario is run at both commits. Some language adapters report "
+                    "file coverage or sampled stacks rather than exact call counts."
                 ),
                 key="runtime_selected_scenario",
             )
@@ -280,7 +282,15 @@ def _render_runtime_evolution(repository_path):
         st.warning("Runtime comparison needs a common runnable scenario in both commits.")
         return
 
-    with st.spinner("Running runtime scenarios for V1 and V2. Dependency setup may take time..."):
+    if Path(selected_scenario).name.lower() == "sample_project.py":
+        st.warning(
+            "sample_project.py is a small demonstration scenario. It only reports behavior "
+            "inside the functions it actually calls; it does not exercise the full repository. "
+            "For meaningful application-wide evidence, select a shared runtime_scenario.py "
+            "or a CLI/test scenario that invokes representative application workflows in both commits."
+        )
+
+    with st.spinner("Running the same scenario against V1 and V2 and collecting executed modules and functions..."):
         try:
             versions = run_version_pair(
                 repository_path=repository_path,
