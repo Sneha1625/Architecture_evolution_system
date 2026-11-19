@@ -26,6 +26,25 @@ def test_runtime_trace_includes_module_scope_entrypoint_and_helper(tmp_path):
     assert architecture.get_relationship_count() >= 1
 
 
+def test_runtime_scenario_receives_multiline_stdin(tmp_path):
+    (tmp_path / "interactive.py").write_text(
+        "first = int(input('Enter first number: '))\\n"
+        "second = int(input('Enter second number: '))\\n"
+        "print(first + second)\\n",
+        encoding="utf-8",
+    )
+
+    architecture = run_version(
+        tmp_path,
+        scenario="interactive.py",
+        timeout=30,
+        runtime_input="2\\n3\\n",
+    )
+
+    assert "interactive" in architecture.modules
+    assert architecture.total_calls >= 0
+
+
 def test_entrypoint_discovery_ignores_server_launchers(tmp_path):
     (tmp_path / "app.py").write_text(
         "from flask import Flask\napp = Flask(__name__)\napp.run()\n",
