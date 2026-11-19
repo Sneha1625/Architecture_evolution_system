@@ -12,12 +12,7 @@ from architecture_model.runtime_version_runner import (
 )
 
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("node") is None,
-    reason="Node.js is not installed in this test environment",
-)
-
-
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is not installed")
 def test_node_runtime_adapter_detects_executed_project_modules(tmp_path):
     (tmp_path / "main.js").write_text(
         "const { calculate } = require('./helper');\n"
@@ -57,6 +52,7 @@ def test_node_entrypoint_discovery_ignores_dev_server(tmp_path):
     assert "server.js" not in candidates
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is not installed")
 def test_javascript_v1_v2_runtime_comparison_uses_node_adapter(tmp_path):
     import subprocess
 
@@ -127,6 +123,7 @@ def test_javascript_v1_v2_runtime_comparison_uses_node_adapter(tmp_path):
     assert result["v2_metrics"]["modules"] >= 2
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is not installed")
 def test_typescript_runtime_adapter_detects_executed_modules(tmp_path):
     (tmp_path / "main.ts").write_text(
         "import { calculate } from './helper.ts';\n"
@@ -147,3 +144,40 @@ def test_typescript_runtime_adapter_detects_executed_modules(tmp_path):
     assert "main.ts" in architecture.modules
     assert "helper.ts" in architecture.modules
     assert architecture.get_module_count() >= 2
+
+
+
+def test_node_binary_discovery_finds_cached_executable(tmp_path):
+    from architecture_model.node_runtime_adapter import _find_node_binary
+    import os
+
+    bin_dir = tmp_path / "node-bin"
+    bin_dir.mkdir()
+    executable = bin_dir / ("node.exe" if os.name == "nt" else "node")
+    executable.write_text("", encoding="utf-8")
+
+    assert _find_node_binary(tmp_path) == executable
+
+
+def test_node_resolver_prefers_path_before_auto_provision(monkeypatch):
+    from architecture_model.node_runtime_adapter import _resolve_node_executable
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/node" if name == "node" else None)
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter._provision_node_runtime",
+        lambda: pytest.fail("Should not provision when Node.js is already on PATH"),
+    )
+
+    assert _resolve_node_executable() == "/usr/bin/node"
+
+
+def test_node_resolver_auto_provisions_when_missing(monkeypatch):
+    from architecture_model.node_runtime_adapter import _resolve_node_executable
+
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter._provision_node_runtime",
+        lambda: "/cached/node",
+    )
+
+    assert _resolve_node_executable() == "/cached/node"
