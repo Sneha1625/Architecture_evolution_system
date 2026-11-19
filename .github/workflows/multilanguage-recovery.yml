@@ -12,7 +12,7 @@ on:
       - "architecture_model/ruby_runtime_adapter.py"
       - "architecture_model/go_runtime_adapter.py"
       - "tests/test_go_runtime_adapter.py"
-      - "tests/test_ruby_runtime_adapter.py tests/test_go_runtime_adapter.py"
+      - "tests/test_ruby_runtime_adapter.py"
       - "tests/test_node_runtime_adapter.py"
       - "features/runtime_architecture.py"
       - "tests/test_multilanguage_recovery.py"
@@ -26,6 +26,8 @@ on:
       - "architecture_model/runtime_version_runner.py"
       - "tests/test_multilanguage_recovery.py"
       - "tests/test_runtime_version_runner.py"
+      - "architecture_model/go_runtime_adapter.py"
+      - "tests/test_go_runtime_adapter.py"
   workflow_dispatch:
 
 jobs:
@@ -55,4 +57,4 @@ jobs:
       - name: Compile changed Python modules
         run: python -m compileall -q architecture_model/recovery.py architecture_model/runtime_version_runner.py architecture_model/node_runtime_adapter.py architecture_model/ruby_runtime_adapter.py architecture_model/go_runtime_adapter.py src/parser.py features/runtime_architecture.py
       - name: Run multi-language architecture recovery tests
-        run: python -m pytest -q tests/test_multilanguage_recovery.py tests/test_runtime_version_runner.py tests/test_node_runtime_adapter.py tests/test_ruby_runtime_adapter.py
+        run: python -m pytest -q tests/test_multilanguage_recovery.py tests/test_runtime_version_runner.py tests/test_node_runtime_adapter.py tests/test_ruby_runtime_adapter.py tests/test_go_runtime_adapter.py
