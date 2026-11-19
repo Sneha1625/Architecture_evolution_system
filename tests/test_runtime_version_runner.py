@@ -147,3 +147,22 @@ def test_stdlib_only_scenario_skips_heavy_requirements_install(tmp_path):
 
     assert "sample_project" in architecture.modules
     assert architecture.total_calls > 0
+    assert "sample_project.Calculator.add" in architecture.executed_functions
+
+
+def test_runtime_evolution_detects_executed_functions():
+    from architecture_model.runtime_model import RuntimeArchitecture
+    from architecture_model.runtime_evolution import compare_runtime_architectures
+
+    v1 = RuntimeArchitecture(entry_point="main.py")
+    v2 = RuntimeArchitecture(entry_point="main.py")
+    v1.executed_functions.update({"main.main", "service.old_path"})
+    v2.executed_functions.update({"main.main", "service.new_path"})
+
+    comparison = compare_runtime_architectures(v1, v2)
+
+    assert comparison["executed_function_changes"]["added"] == ["service.new_path"]
+    assert comparison["executed_function_changes"]["removed"] == ["service.old_path"]
+    assert comparison["summary"]["functions_added"] == 1
+    assert comparison["summary"]["functions_removed"] == 1
+    assert comparison["summary"]["function_changes"] == 2
