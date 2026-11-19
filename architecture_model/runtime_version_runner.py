@@ -641,8 +641,14 @@ def _prepare_runtime_interpreter(
     requirements_files = _requirements_files(Path(worktree_path), scenario)
     environment_path = Path(environment_path)
     base_python = Path(python_executable or sys.executable)
+    venv_command = [str(base_python), "-m", "venv"]
+    if not requirements_files:
+        # Preserve access to the active environment for repositories that
+        # do not declare their own isolated dependency set.
+        venv_command.append("--system-site-packages")
+    venv_command.append(str(environment_path))
     subprocess.run(
-        [str(base_python), "-m", "venv", str(environment_path)],
+        venv_command,
         capture_output=True,
         text=True,
         check=True,
