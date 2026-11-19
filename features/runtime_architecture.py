@@ -6,6 +6,7 @@ runtime architectures from two Git worktrees (V1 and V2).
 """
 
 import streamlit as st
+from pathlib import Path
 
 from architecture_model.runtime_analyzer import RuntimeAnalyzer
 from architecture_model.runtime_comparator import compare_architectures
