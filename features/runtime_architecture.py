@@ -45,11 +45,11 @@ def _render_runtime_evolution(repository_path):
     )
     st.info(
         "Runtime V1/V2 execution evidence currently supports Python, JavaScript, "
-        "erasable TypeScript, Ruby, Go, Java, C, C++, and C# when the required toolchains are installed. "
-        "Go, C/C++, and C# use compiler coverage to identify executed source files (not call "
+        "erasable TypeScript, Ruby, Go, Java, C, C++, C#, and Rust when the required toolchains are installed. "
+        "Go, C/C++, C#, and Rust use compiler coverage to identify executed source files (not call "
         "edges or call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
         "counts). Static architecture recovery supports all 11 language families. "
-        "Rust and PHP remain static-analysis only."
+        "PHP remains static-analysis only."
     )
 
     try:
@@ -110,7 +110,7 @@ def _render_runtime_evolution(repository_path):
             return
 
         preferred_scenario = next(
-            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
+            (name for name in ("runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts", "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java", "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj", "Cargo.toml", "main.py", "cli.py", "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java", "main.c", "main.cpp")
              if name in scenario_options),
             scenario_options[0],
         )
@@ -120,7 +120,7 @@ def _render_runtime_evolution(repository_path):
             index=scenario_options.index(preferred_scenario),
             help=(
                 "Choose a bounded Python, JavaScript, erasable TypeScript, Ruby, Go, Java, C, or C++ "
-                "scenario that exercises application logic. Go, C/C++, and C# report executed "
+                "scenario that exercises application logic. Go, C/C++, C#, and Rust report executed "
                 "source files through coverage; Java reports sampled stack evidence, not "
                 "exact call counts. Long-running web-server launchers are excluded."
             ),
@@ -161,7 +161,7 @@ def _render_runtime_evolution(repository_path):
                 "The selected versions do not share a runnable supported scenario. "
                 "Your static architecture graph, inferred relationships, dependency "
                 "inventory, and snapshot history remain available above. "
-                "Runtime tracing for Rust and PHP is not implemented yet. "
+                "Runtime tracing for PHP is not implemented yet. "
                 "TypeScript requires syntax that Node.js "
                 "can strip without a separate build configuration."
             )
@@ -240,6 +240,11 @@ def _render_runtime_evolution(repository_path):
     elif Path(versions["scenario"]).suffix.lower() == ".csproj":
         st.info(
             "C# runtime evidence uses dotnet-coverage to identify executed source files. "
+            "It does not collect runtime call relationships or call counts."
+        )
+    elif Path(versions["scenario"]).name.lower() == "cargo.toml":
+        st.info(
+            "Rust runtime evidence uses cargo-llvm-cov to identify executed source files. "
             "It does not collect runtime call relationships or call counts."
         )
 
