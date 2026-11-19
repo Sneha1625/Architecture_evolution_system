@@ -76,8 +76,8 @@ def _missing_module_name(error_text):
 
 
 
-def _python_entrypoint_reaches_hardware_api(worktree_path, entrypoint):
-    """Detect camera-dependent code reachable through local Python imports."""
+def _python_entrypoint_runtime_blocker(worktree_path, entrypoint):
+    """Find hardware or interactive-input blockers through local Python imports."""
     import ast
 
     root = Path(worktree_path).resolve()
@@ -125,10 +125,26 @@ def _python_entrypoint_reaches_hardware_api(worktree_path, entrypoint):
         try:
             source = path.read_text(encoding="utf-8", errors="ignore")
             if any(pattern.search(source) for pattern in hardware_patterns):
-                return True
+                return "camera"
             tree = ast.parse(source, filename=str(path))
         except (OSError, SyntaxError, ValueError):
             continue
+
+        # A keyboard-driven script cannot be run deterministically without
+        # user-provided answers. Do not invent stdin for architecture analysis.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id == "input":
+                    return "keyboard input"
+                if isinstance(func, ast.Attribute):
+                    owner = func.value
+                    if (
+                        func.attr in {"read", "readline", "readlines"}
+                        and isinstance(owner, ast.Attribute)
+                        and owner.attr == "stdin"
+                    ):
+                        return "keyboard input"
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -158,7 +174,7 @@ def _python_entrypoint_reaches_hardware_api(worktree_path, entrypoint):
                         if alias.name != "*":
                             pending.extend(item.relative_to(root) for item in local_module_paths(alias.name, child_base))
 
-    return False
+    return None
 
 
 def discover_python_entrypoints(worktree_path):
@@ -225,7 +241,7 @@ def discover_python_entrypoints(worktree_path):
 
         # Camera initialization is often hidden in imported modules.
         # Exclude entry points whose local import graph opens a physical camera.
-        if _python_entrypoint_reaches_hardware_api(root, relative):
+        if _python_entrypoint_runtime_blocker(root, relative):
             continue
 
         has_main_guard = False
@@ -966,12 +982,9 @@ def run_version(
             if "EOFError" in execution_error and not runtime_input.strip():
                 raise RuntimeError(
                     "This Python scenario requests keyboard input, but no input was supplied. "
-                    "To keep the Runtime Input field hidden, create a UTF-8 text file named "
-                    "'architecture_runtime_input.txt' in the selected repository's root folder. "
-                    "Put one response per line in the order requested by the program. "
-                    "The same file content is supplied to V1 and V2. "
-                    "For example, a program asking for two numbers could use two lines in that file. "
-                    "No input values are guessed automatically. "
+                    "Interactive keyboard input is not supported for unattended V1/V2 "
+                    "comparison. The runner will not guess answers or require a manual "
+                    "input file. Choose a shared non-interactive CLI/runtime scenario instead. "
                     f"Scenario: {scenario}; version: {get_commit_hash(worktree_path)}."
                 )
 
@@ -1264,17 +1277,22 @@ def run_version_pair(
             # explicitly passes a hardware-dependent entry point. Discovery
             # normally filters these, but never launch a physical-camera app
             # in the isolated runtime worker.
-            if Path(scenario).suffix.lower() in {".py", ".pyw"} and (
-                _python_entrypoint_reaches_hardware_api(v1_path, scenario)
-                or _python_entrypoint_reaches_hardware_api(v2_path, scenario)
-            ):
-                raise ValueError(
-                    f"Runtime scenario '{scenario}' depends on a physical camera "
-                    "in at least one selected commit. Camera-dependent applications "
-                    "cannot be executed in the isolated runtime comparison. Choose "
-                    "a shared non-interactive CLI/runtime scenario instead; static "
-                    "architecture analysis remains available."
-                )
+            if Path(scenario).suffix.lower() in {".py", ".pyw"}:
+                v1_blocker = _python_entrypoint_runtime_blocker(v1_path, scenario)
+                v2_blocker = _python_entrypoint_runtime_blocker(v2_path, scenario)
+                blocker = v1_blocker or v2_blocker
+                if blocker:
+                    detail = (
+                        "requires access to a physical camera"
+                        if blocker == "camera"
+                        else "requests keyboard input"
+                    )
+                    raise ValueError(
+                        f"Runtime scenario '{scenario}' {detail} in at least one "
+                        "selected commit. It is not suitable for unattended runtime "
+                        "comparison. Choose a shared non-interactive scenario instead; "
+                        "static architecture analysis remains available."
+                    )
 
             # Resolve once from the combined V1/V2 requirements so both
             # snapshots run under the same Python version.
