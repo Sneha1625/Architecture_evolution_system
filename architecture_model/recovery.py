@@ -100,42 +100,50 @@ def _display_name(value: str) -> str:
 
 
 def build_components(parsed_results: List[Dict[str, Any]]) -> List[Component]:
-    """Group source files by their first meaningful package/module directory."""
+    """Create one architecture component per source file.
+
+    Package-level grouping hid imports between files in the same package:
+    build_relationships intentionally removes self-component edges. Keeping
+    source files as distinct components preserves those real dependencies and
+    gives the Relationships table and graph useful, repository-specific nodes.
+    """
     relative = _relative_files(parsed_results)
-    grouped: Dict[str, Dict[str, Any]] = {}
+    components: List[Component] = []
+    seen = set()
 
     for result in parsed_results:
         original = _file_of(result)
         if not original:
             continue
         rel = relative.get(original, original)
-        if any(part.lower() in IGNORED_PATH_PARTS for part in rel.split("/")):
+        parts = [part for part in rel.split("/") if part]
+        if not parts or any(part.lower() in IGNORED_PATH_PARTS for part in parts):
             continue
 
-        name_key = _component_key(rel)
-        component_id = "component_" + re.sub(r"[^a-z0-9]+", "_", name_key.lower()).strip("_")
-        if component_id == "component_":
-            component_id = "component_module"
+        path_without_extension = str(PurePosixPath(rel).with_suffix(""))
+        component_key = re.sub(
+            r"[^a-z0-9]+", "_", path_without_extension.lower()
+        ).strip("_") or "module"
+        component_id = "file_" + component_key
+        if component_id in seen:
+            continue
+        seen.add(component_id)
 
-        item = grouped.setdefault(component_id, {
-            "name": _display_name(name_key), "files": [], "layers": [],
-        })
-        item["files"].append(original)
-        item["layers"].append(detect_layer(rel))
-
-    components = []
-    for component_id, data in grouped.items():
-        non_test = [layer for layer in data["layers"] if layer != "test"]
-        layers = non_test or data["layers"]
-        layer = max(set(layers), key=layers.count) if layers else "module"
+        stem = PurePosixPath(rel).stem or "module"
+        parent = PurePosixPath(rel).parent.as_posix()
+        display_name = (
+            f"{parent}/{stem}" if parent not in ("", ".") else stem
+        )
+        layer = detect_layer(rel)
         components.append(Component(
             id=component_id,
-            name=data["name"],
-            responsibility=f"{data['name']} module/package functionality",
+            name=display_name,
+            responsibility=f"Source module {rel}",
             layer=layer,
-            files=sorted(set(data["files"])),
+            files=[original],
             dependencies=[],
         ))
+
     return components
 
 
