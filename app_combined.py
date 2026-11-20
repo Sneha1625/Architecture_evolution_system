@@ -260,14 +260,24 @@ if section == "Architecture Evolution" and page in ("Relationships", "Architectu
             else:
                 positions = nx.spring_layout(graph, seed=42, k=1.4, iterations=100)
                 edge_x, edge_y = [], []
+                edge_annotations = []
                 for source, target in graph.edges():
                     x0, y0 = positions[source]
                     x1, y1 = positions[target]
                     edge_x.extend([x0, x1, None])
                     edge_y.extend([y0, y1, None])
+                    # Plotly line traces do not draw directed arrowheads;
+                    # add a small annotation so dependency direction is clear.
+                    edge_annotations.append(dict(
+                        x=x1, y=y1, ax=x0, ay=y0,
+                        xref="x", yref="y", axref="x", ayref="y",
+                        showarrow=True, arrowhead=2, arrowsize=1,
+                        arrowwidth=1.2, arrowcolor="#888",
+                        standoff=15, startstandoff=15,
+                    ))
                 edge_trace = go.Scatter(
                     x=edge_x, y=edge_y, mode="lines",
-                    line=dict(width=1, color="#888"),
+                    line=dict(width=1.2, color="#888"),
                     hoverinfo="none"
                 )
                 node_x, node_y, node_text, hover_text = [], [], [], []
@@ -285,10 +295,11 @@ if section == "Architecture Evolution" and page in ("Relationships", "Architectu
                 )
                 fig = go.Figure(data=[edge_trace, node_trace])
                 fig.update_layout(
-                    height=680, showlegend=False,
-                    margin=dict(l=20, r=20, t=30, b=20),
+                    height=720, showlegend=False,
+                    margin=dict(l=35, r=35, t=35, b=35),
                     xaxis=dict(visible=False), yaxis=dict(visible=False),
-                    hovermode="closest"
+                    hovermode="closest",
+                    annotations=edge_annotations,
                 )
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("Each node represents a recovered component/package. Arrows represent detected internal import dependencies.")
