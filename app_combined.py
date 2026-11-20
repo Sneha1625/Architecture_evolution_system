@@ -204,6 +204,100 @@ class _CombinedNavigation(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+# Render the two static architecture pages directly from the snapshot
+# generated above. This avoids the legacy embedded page using stale DB state.
+if section == "Architecture Evolution" and page in ("Relationships", "Architecture Graph"):
+    snapshot_id = st.session_state.get("combined_static_snapshot_id")
+    if not snapshot_id:
+        st.warning("Load a GitHub repository first. Its static architecture snapshot will be generated automatically.")
+        st.stop()
+
+    try:
+        from architecture_model.snapshot_loader import load_snapshot
+        import pandas as pd
+        import networkx as nx
+        import plotly.graph_objects as go
+
+        architecture_snapshot = load_snapshot(int(snapshot_id))
+        if architecture_snapshot is None:
+            st.error("The architecture snapshot could not be loaded from the database.")
+            st.stop()
+
+        components = architecture_snapshot.components or []
+        relationships = architecture_snapshot.relationships or []
+        st.title("Relationships" if page == "Relationships" else "Architecture Graph")
+        st.caption(
+            f"Repository: {st.session_state.get('repository_url', '')} | "
+            f"Commit: {architecture_snapshot.commit_hash[:12]}"
+        )
+        metric1, metric2, metric3 = st.columns(3)
+        metric1.metric("Components", len(components))
+        metric2.metric("Relationships", len(relationships))
+        metric3.metric("Source files", sum(len(c.files or []) for c in components))
+
+        if page == "Relationships":
+            if relationships:
+                rows = [{
+                    "Source": rel.source,
+                    "Relationship": getattr(rel, "type", "depends_on"),
+                    "Target": rel.target,
+                } for rel in relationships]
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("No internal dependencies were detected for this repository and commit. The components were recovered, but no imports between the detected component boundaries were found.")
+            with st.expander("Detected components and source files"):
+                for component in components:
+                    st.write(f"**{component.name}** — {component.layer}")
+                    st.caption(", ".join(component.files or []))
+        else:
+            graph = nx.DiGraph()
+            for component in components:
+                graph.add_node(component.id, label=component.name, layer=component.layer)
+            for rel in relationships:
+                graph.add_edge(rel.source, rel.target, label=getattr(rel, "type", "depends_on"))
+            if graph.number_of_nodes() == 0:
+                st.warning("No source components were recovered. Check whether the repository contains supported source files.")
+            else:
+                positions = nx.spring_layout(graph, seed=42, k=1.4, iterations=100)
+                edge_x, edge_y = [], []
+                for source, target in graph.edges():
+                    x0, y0 = positions[source]
+                    x1, y1 = positions[target]
+                    edge_x.extend([x0, x1, None])
+                    edge_y.extend([y0, y1, None])
+                edge_trace = go.Scatter(
+                    x=edge_x, y=edge_y, mode="lines",
+                    line=dict(width=1, color="#888"),
+                    hoverinfo="none"
+                )
+                node_x, node_y, node_text, hover_text = [], [], [], []
+                for node, attrs in graph.nodes(data=True):
+                    x, y = positions[node]
+                    node_x.append(x)
+                    node_y.append(y)
+                    node_text.append(attrs.get("label", node))
+                    hover_text.append(f"{attrs.get('label', node)}<br>Layer: {attrs.get('layer', 'unknown')}")
+                node_trace = go.Scatter(
+                    x=node_x, y=node_y, mode="markers+text",
+                    text=node_text, textposition="top center",
+                    hovertext=hover_text, hoverinfo="text",
+                    marker=dict(size=24, color="#4C78A8", line=dict(width=1, color="#fff"))
+                )
+                fig = go.Figure(data=[edge_trace, node_trace])
+                fig.update_layout(
+                    height=680, showlegend=False,
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    xaxis=dict(visible=False), yaxis=dict(visible=False),
+                    hovermode="closest"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("Each node represents a recovered component/package. Arrows represent detected internal import dependencies.")
+        st.stop()
+    except Exception as exc:
+        st.error(f"Could not display static architecture data: {exc}")
+        st.exception(exc)
+        st.stop()
+
 which = 0 if section == "Architecture Intelligence" else 1
 filename = "app.py" if which == 0 else "app2.py"
 source = zlib.decompress(base64.b85decode(APP_SOURCES[which])).decode("utf-8")
