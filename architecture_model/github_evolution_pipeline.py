@@ -398,18 +398,11 @@ def analyze_commit(
         repository_url=normalized_url,
     )
 
-    existing_snapshot = find_snapshot(
-        repository_id,
-        resolved_commit,
-    )
-
-    if existing_snapshot is not None:
-        return {
-            "repository_id": repository_id,
-            "snapshot_id": existing_snapshot,
-            "commit_hash": resolved_commit,
-            "created": False,
-        }
+    # Re-parse even when this commit already has a snapshot. Older snapshots
+    # may have been produced by earlier recovery rules (for example,
+    # package-level grouping that discarded within-package dependencies).
+    # Saving a fresh snapshot ensures the selected commit reflects current
+    # architecture recovery logic.
 
     parsed_results = parse_commit(
         repo,
