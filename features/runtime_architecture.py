@@ -19,7 +19,6 @@ from architecture_model.runtime_evolution import (
 )
 from architecture_model.runtime_version_runner import (
     list_repository_commits,
-    list_runtime_entrypoints_by_commit,
     run_version_pair,
 )
 from features.runtime_mapping import build_runtime_component_map
@@ -219,64 +218,6 @@ def _render_runtime_evolution(repository_path):
                 key="runtime_v2_selected_commit",
             )
 
-        try:
-            scenario_sets = list_runtime_entrypoints_by_commit(
-                repository_path, v1_commit, v2_commit
-            )
-        except Exception as error:
-            st.error(f"Could not inspect runnable scenarios in the selected commits: {error}")
-            return
-
-        v1_scenarios = scenario_sets.get("v1", [])
-        v2_scenarios = scenario_sets.get("v2", [])
-
-        if not v1_scenarios:
-            st.warning("No supported bounded runtime scenario was discovered in V1.")
-        if not v2_scenarios:
-            st.warning("No supported bounded runtime scenario was discovered in V2.")
-
-        preferred_names = (
-            "runtime_scenario.py", "runtime_scenario.js", "runtime_scenario.ts",
-            "runtime_scenario.rb", "runtime_scenario.go", "runtime_scenario.java",
-            "runtime_scenario.c", "runtime_scenario.cpp", "runtime_scenario.csproj",
-            "Cargo.toml", "runtime_scenario.php", "main.php", "main.py", "cli.py",
-            "run.py", "index.js", "index.ts", "main.rb", "main.go", "Main.java",
-            "main.c", "main.cpp",
-        )
-
-        def preferred_index(options):
-            for name in preferred_names:
-                if name in options:
-                    return options.index(name)
-            return 0
-
-        scenario_col1, scenario_col2 = st.columns(2)
-        with scenario_col1:
-            v1_scenario = (
-                st.selectbox(
-                    "V1 runtime scenario",
-                    options=v1_scenarios,
-                    index=preferred_index(v1_scenarios),
-                    help="Select the entry point that represents the workflow in the older commit.",
-                    key="runtime_v1_scenario",
-                )
-                if v1_scenarios else None
-            )
-        with scenario_col2:
-            v2_scenario = (
-                st.selectbox(
-                    "V2 runtime scenario",
-                    options=v2_scenarios,
-                    index=preferred_index(v2_scenarios),
-                    help=(
-                        "Select the corresponding workflow in the newer commit. "
-                        "The path may differ from V1 if the entry point was renamed or moved."
-                    ),
-                    key="runtime_v2_scenario",
-                )
-                if v2_scenarios else None
-            )
-
         run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
         run_comparison = st.form_submit_button("Run Runtime Comparison")
 
@@ -303,30 +244,17 @@ def _render_runtime_evolution(repository_path):
         )
         return
 
-    if not v1_scenario or not v2_scenario:
-        st.warning("Runtime comparison requires one supported runnable scenario in each selected commit.")
-        return
+    st.caption(
+        "The runtime workload is selected automatically from runnable application code "
+        "available in both selected commits."
+    )
 
-    if Path(v1_scenario).name.lower() == "sample_project.py" or Path(v2_scenario).name.lower() == "sample_project.py":
-        st.error(
-            "The selected sample_project.py is a demonstration script, not the loaded application's "
-            "real workflow. Running it can produce identical or misleading zero-change results."
-        )
-        st.info(
-            "Use Quick Static Architecture Comparison to compare the complete repository commits. "
-            "Runtime comparison requires a bounded CLI or test scenario that actually executes the "
-            "application functions changed between V1 and V2."
-        )
-        return
-
-    with st.spinner("Running the selected V1 and V2 scenarios and collecting execution traces..."):
+    with st.spinner("Automatically selecting and running the same application workload in V1 and V2..."):
         try:
             versions = run_version_pair(
                 repository_path=repository_path,
                 v1_commit=v1_commit,
                 v2_commit=v2_commit,
-                v1_scenario=v1_scenario,
-                v2_scenario=v2_scenario,
             )
 
             comparison = compare_runtime_architectures(
@@ -400,11 +328,6 @@ def _render_runtime_evolution(repository_path):
             versions["v2_commit"],
         )
 
-    st.caption(
-        f"Runtime scenarios: V1 `{versions.get('v1_scenario', versions['scenario'])}` | "
-        f"V2 `{versions.get('v2_scenario', versions['scenario'])}`. "
-        "Different entry-point paths are allowed; both must represent the same workflow."
-    )
     if Path(versions["scenario"]).suffix.lower() == ".go":
         st.info(
             "Go runtime evidence uses compiler-instrumented coverage. The module list "
