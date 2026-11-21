@@ -273,3 +273,132 @@ def test_node_runtime_skips_npm_install_without_declared_dependencies(tmp_path, 
 
     assert _install_node_dependencies(tmp_path) is False
 
+
+
+def test_node_entrypoint_discovery_prefers_declared_test_script(tmp_path):
+    import json
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "vitest run"}}),
+        encoding="utf-8",
+    )
+    app = tmp_path / "src"
+    app.mkdir()
+    (app / "index.ts").write_text(
+        "const app = { listen() {} }; app.listen(3000);\n",
+        encoding="utf-8",
+    )
+
+    candidates = discover_node_entrypoints(tmp_path)
+
+    assert "npm:test" in candidates
+    assert "src/index.ts" not in candidates
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not (shutil.which("npm") or shutil.which("npm.cmd")),
+    reason="Node.js and npm are required",
+)
+def test_npm_test_workload_collects_project_runtime_modules(tmp_path):
+    import json
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"test": "node --test"}}),
+        encoding="utf-8",
+    )
+    source = tmp_path / "src"
+    tests = tmp_path / "test"
+    source.mkdir()
+    tests.mkdir()
+    (source / "service.js").write_text(
+        "exports.calculate = (value) => value * 2;\n",
+        encoding="utf-8",
+    )
+    (tests / "service.test.js").write_text(
+        "const test = require('node:test');\n"
+        "const assert = require('node:assert/strict');\n"
+        "const { calculate } = require('../src/service');\n"
+        "test('calculate', () => assert.equal(calculate(21), 42));\n",
+        encoding="utf-8",
+    )
+
+    architecture = run_node_version(tmp_path, "npm:test", timeout=60)
+
+    assert "src/service.js" in architecture.modules
+    assert architecture.get_module_count() >= 1
+
+
+@pytest.mark.skipif(
+    shutil.which("node") is None or not (shutil.which("npm") or shutil.which("npm.cmd")),
+    reason="Node.js and npm are required",
+)
+def test_runtime_pair_automatically_uses_npm_test_for_both_commits(tmp_path):
+    import json
+    import subprocess
+
+    repository = tmp_path / "node_test_repo"
+    repository.mkdir()
+
+    def git(*args):
+        subprocess.run(
+            ["git", "-C", str(repository), *args],
+            check=True, capture_output=True, text=True,
+        )
+
+    git("init")
+    git("config", "user.name", "Node Runtime Test")
+    git("config", "user.email", "node-runtime@example.com")
+    (repository / "src").mkdir()
+    (repository / "test").mkdir()
+    (repository / "package.json").write_text(
+        json.dumps({"scripts": {"test": "node --test"}}),
+        encoding="utf-8",
+    )
+    (repository / "src" / "service.js").write_text(
+        "exports.calculate = (value) => value + 1;\n",
+        encoding="utf-8",
+    )
+    (repository / "test" / "service.test.js").write_text(
+        "const test = require('node:test');\n"
+        "const assert = require('node:assert/strict');\n"
+        "const { calculate } = require('../src/service');\n"
+        "test('calculate', () => assert.equal(calculate(1), 2));\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    git("commit", "-m", "V1")
+    v1 = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    (repository / "src" / "service.js").write_text(
+        "exports.calculate = (value) => value + 2;\n",
+        encoding="utf-8",
+    )
+    (repository / "test" / "service.test.js").write_text(
+        "const test = require('node:test');\n"
+        "const assert = require('node:assert/strict');\n"
+        "const { calculate } = require('../src/service');\n"
+        "test('calculate', () => assert.equal(calculate(1), 3));\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    git("commit", "-m", "V2")
+    v2 = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    result = run_version_pair(
+        repository_path=repository,
+        v1_commit=v1,
+        v2_commit=v2,
+        timeout=60,
+    )
+
+    assert result["scenario"] == "npm:test"
+    assert "src/service.js" in result["v1_runtime"].modules
+    assert "src/service.js" in result["v2_runtime"].modules
+    assert result["v1_runtime"].get_module_count() > 0
+    assert result["v2_runtime"].get_module_count() > 0
