@@ -77,7 +77,7 @@ def _missing_module_name(error_text):
 
 
 def _python_entrypoint_runtime_blocker(worktree_path, entrypoint):
-    """Find hardware or interactive-input blockers through local Python imports."""
+    """Find physical-camera blockers through the local Python import graph."""
     import ast
 
     root = Path(worktree_path).resolve()
@@ -1209,11 +1209,11 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
     common = v1_candidates & v2_candidates
     if not common:
         raise FileNotFoundError(
-            "The selected commits have no common non-interactive Python entry point. "
-            "Streamlit/Flask/FastAPI/Gradio launchers are excluded because they keep "
-            "running and cannot be traced as bounded scenarios. Add a short Python "
-            "scenario or CLI script that exercises the application logic, then retry. "
-            "Static architecture comparison remains available for these commits."
+            "The selected commits have no Python entry point with the same relative path. "
+            "For renamed or moved entry points, pass v1_scenario and v2_scenario separately. "
+            "Streamlit/Flask/FastAPI/Gradio launchers are excluded because they keep running "
+            "and cannot be traced as bounded scenarios. Add a short CLI/test scenario that "
+            "exercises the application logic, then retry."
         )
     preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
     preferred_order = {name: index for index, name in enumerate(preferred)}
