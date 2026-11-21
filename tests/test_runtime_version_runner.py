@@ -314,7 +314,7 @@ def test_runtime_version_pair_automatically_uses_recovery_workload(tmp_path):
         v2_commit=v2_commit,
     )
 
-    assert result["scenario"] == "test_architecture_recovery.py"
+    assert Path(result["scenario"]).name == "architecture_runtime_workload.py"
     assert result["v1_runtime"].get_module_count() > 0
     assert result["v2_runtime"].get_module_count() > 0
     assert result["v1_runtime"].get_relationship_count() > 0
