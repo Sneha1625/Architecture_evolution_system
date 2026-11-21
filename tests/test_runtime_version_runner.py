@@ -224,3 +224,12 @@ def test_runtime_evolution_detects_executed_functions():
     assert comparison["summary"]["functions_added"] == 1
     assert comparison["summary"]["functions_removed"] == 1
     assert comparison["summary"]["function_changes"] == 2
+
+
+def test_sample_project_is_not_auto_selected_as_repository_runtime_entrypoint(tmp_path):
+    (tmp_path / "sample_project.py").write_text(
+        "def calculate():\\n    return 42\\n\\nprint(calculate())\\n",
+        encoding="utf-8",
+    )
+
+    assert "sample_project.py" not in discover_python_entrypoints(tmp_path)
