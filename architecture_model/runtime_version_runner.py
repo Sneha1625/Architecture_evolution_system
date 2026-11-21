@@ -482,14 +482,15 @@ if not scenario_path.exists():
     raise FileNotFoundError(f"Scenario not found: {scenario_path}")
 
 # A Python entry-point script often performs its work at module scope.
-# sys.setprofile emits function-call events, not module-execution events, so
-# explicitly include the selected project entry point in the observed modules.
+# Include it only when it is part of the selected repository. Automatically
+# generated workload drivers live outside the worktree and are not project code.
 try:
     relative_entrypoint = scenario_path.resolve().relative_to(worktree)
     entrypoint_module = ".".join(relative_entrypoint.with_suffix("").parts) or "__main__"
 except (ValueError, OSError, RuntimeError):
-    entrypoint_module = "__main__"
-executed_modules.add(entrypoint_module)
+    entrypoint_module = None
+if entrypoint_module:
+    executed_modules.add(entrypoint_module)
 
 old_cwd = Path.cwd()
 execution_error = None
@@ -1228,13 +1229,7 @@ def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
     v2_candidates = set(discover_runtime_entrypoints(v2_path))
     common = v1_candidates & v2_candidates
     if not common:
-        raise FileNotFoundError(
-            "The selected commits do not contain a shared, supported, bounded runtime workload. "
-            "Long-running Streamlit/Flask/FastAPI/Gradio launchers are intentionally excluded. "
-            "For the Architecture Modeling System, the automatic workload is "
-            "test_architecture_recovery.py because it runs the real source parser and "
-            "architecture recovery pipeline."
-        )
+        return None
     preferred = (
         "runtime_scenario.py", "test_architecture_recovery.py",
         "main.py", "run.py", "cli.py", "__main__.py",
@@ -1250,6 +1245,56 @@ def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
         ),
     )[0]
 
+
+
+
+def _create_automatic_architecture_workload(
+    v1_path: Path,
+    v2_path: Path,
+    temporary_root: Path,
+) -> str:
+    """Build one temporary workload when both versions expose the real parser."""
+    parser_paths = (v1_path / "src" / "parser.py", v2_path / "src" / "parser.py")
+    if not all(path.is_file() for path in parser_paths):
+        raise FileNotFoundError(
+            "No shared runnable workload was found, and both commits do not contain "
+            "src/parser.py. Runtime comparison needs an executable workflow that exists "
+            "in both versions."
+        )
+
+    import ast
+
+    for parser_path in parser_paths:
+        try:
+            tree = ast.parse(parser_path.read_text(encoding="utf-8", errors="ignore"))
+        except (OSError, SyntaxError, ValueError) as error:
+            raise RuntimeError(
+                f"Could not validate the parser workload in {parser_path}: {error}"
+            ) from error
+        if not any(
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "parse_folder"
+            for node in tree.body
+        ):
+            raise FileNotFoundError(
+                f"{parser_path} does not expose the parse_folder application function."
+            )
+
+    # Keep this driver outside both Git worktrees. It calls the actual code
+    # present in each selected commit and is excluded from project metrics.
+    workload = Path(temporary_root) / "architecture_runtime_workload.py"
+    workload.write_text(
+        "from src.parser import parse_folder\n"
+        "parsed_results = parse_folder('.')\n"
+        "try:\n"
+        "    from architecture_model.recovery import recover_architecture\n"
+        "except ImportError:\n"
+        "    recover_architecture = None\n"
+        "if recover_architecture is not None:\n"
+        "    recover_architecture(parsed_results)\n",
+        encoding="utf-8",
+    )
+    return str(workload)
 
 def _runtime_metrics(architecture):
     """Return comparable measured metrics for one executed Git version."""
@@ -1323,7 +1368,14 @@ def run_version_pair(
                 if scenario:
                     v1_scenario = v2_scenario = scenario
                 else:
-                    v1_scenario = v2_scenario = _common_runtime_entrypoint(v1_path, v2_path)
+                    common_workload = _common_runtime_entrypoint(v1_path, v2_path)
+                    if common_workload:
+                        v1_scenario = v2_scenario = common_workload
+                    else:
+                        generated_workload = _create_automatic_architecture_workload(
+                            v1_path, v2_path, temp_root
+                        )
+                        v1_scenario = v2_scenario = generated_workload
             else:
                 v1_scenario = v1_scenario or scenario
                 v2_scenario = v2_scenario or scenario
