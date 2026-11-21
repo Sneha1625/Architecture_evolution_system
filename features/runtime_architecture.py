@@ -326,7 +326,20 @@ def _render_runtime_evolution(repository_path):
             versions["v2_commit"],
         )
 
-    if Path(versions["scenario"]).suffix.lower() == ".go":
+    if versions["scenario"] == "npm:test":
+        st.info(
+            "Runtime workload: the repository's declared npm test script. Dependencies "
+            "are installed in each isolated commit worktree, and V8 coverage identifies "
+            "application source files exercised by the tests. Node.js CPU-profile "
+            "relationships are sampled evidence, not exact function invocation counts."
+        )
+    elif Path(versions["scenario"]).suffix.lower() in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
+        st.info(
+            "Node.js runtime evidence uses V8 coverage for executed project files and "
+            "sampled CPU-profile stacks for observed relationships. Profile edges are "
+            "sampling evidence, not exact function invocation counts."
+        )
+    elif Path(versions["scenario"]).suffix.lower() == ".go":
         st.info(
             "Go runtime evidence uses compiler-instrumented coverage. The module list "
             "shows project source files reached during execution; Go function-call "
