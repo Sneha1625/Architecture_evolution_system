@@ -322,7 +322,7 @@ def _render_runtime_evolution(repository_path):
             "or a CLI/test scenario that invokes representative application workflows in both commits."
         )
 
-    with st.spinner("Running the same scenario against V1 and V2 and collecting executed modules and functions..."):
+    with st.spinner("Running the selected V1 and V2 scenarios and collecting execution traces..."):
         try:
             versions = run_version_pair(
                 repository_path=repository_path,
@@ -371,8 +371,8 @@ def _render_runtime_evolution(repository_path):
                 )
                 st.code(error_text)
                 st.info(
-                    "Runtime metrics are shown only when the same scenario completes "
-                    "successfully in both selected commits. Static architecture, "
+                    "Runtime metrics are shown only when both selected scenarios complete "
+                    "successfully. The same supplied input is used for both Python runs. Static architecture, "
                     "source inventory, and commit-level architecture comparison "
                     "remain available when runtime execution is blocked."
                 )
@@ -407,7 +407,8 @@ def _render_runtime_evolution(repository_path):
 
     st.caption(
         f"Runtime scenarios: V1 `{versions.get('v1_scenario', versions['scenario'])}` | "
-        f"V2 `{versions.get('v2_scenario', versions['scenario'])}`"
+        f"V2 `{versions.get('v2_scenario', versions['scenario'])}`. "
+        "Different entry-point paths are allowed; both must represent the same workflow."
     )
     if Path(versions["scenario"]).suffix.lower() == ".go":
         st.info(
