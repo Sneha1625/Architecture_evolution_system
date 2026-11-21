@@ -1289,12 +1289,11 @@ def _create_automatic_architecture_workload(
     if not all(path.is_file() for path in parser_paths):
         raise FileNotFoundError(
             "No shared non-interactive runtime workload was found in the selected commits. "
-            "The automatic runner could not identify a supported application entry point "
-            "that exists in both versions. Interactive Python entry points are skipped; "
-            "Node.js server entry points that require a listening service or browser are "
-            "not launched automatically. Use Quick Static Architecture Comparison for "
-            "source-level V1/V2 results, or select commits with a bounded non-interactive "
-            "runtime scenario."
+            "The automatic runner could not identify a supported non-interactive "
+            "application workload that exists in both versions. Interactive command-line "
+            "programs and long-running server/browser launchers are not started automatically. "
+            "Use Quick Static Architecture Comparison for source-level V1/V2 results, or "
+            "select commits with a bounded runtime scenario or a declared test suite."
         )
 
     import ast
