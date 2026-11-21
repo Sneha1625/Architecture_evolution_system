@@ -268,12 +268,10 @@ def _render_runtime_evolution(repository_path):
             # Keep static architecture, dependencies, and history visible when
             # either independently selected scenario cannot be validated.
             st.warning(
-                "Runtime execution comparison could not be completed. One selected "
-                "scenario may be missing from its commit, or a required runtime/tool "
-                "may be unavailable. Your static architecture graph, "
-                "dependency inventory, and snapshot history remain available above. "
-                "TypeScript requires syntax that Node.js can strip without a separate "
-                "build configuration. Check the error details below for the exact reason."
+                "Runtime execution comparison could not be completed because a common "
+                "runnable workload was not found in both selected commits. Your static "
+                "architecture graph, dependency inventory, and snapshot history remain "
+                "available above. The exact reason is shown below."
             )
             st.caption(str(error))
             return
