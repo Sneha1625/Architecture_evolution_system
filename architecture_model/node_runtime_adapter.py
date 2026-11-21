@@ -290,7 +290,7 @@ def _resolve_node_executable():
         return node
     return _provision_node_runtime()
 
-def _install_node_dependencies(root: Path, timeout=180):
+def _install_node_dependencies(root: Path, timeout=180, node_executable=None):
     """Install a selected commit's declared npm dependencies inside its isolated worktree.
 
     Lifecycle scripts are disabled because comparison only needs the dependency
@@ -314,11 +314,32 @@ def _install_node_dependencies(root: Path, timeout=180):
     if not any(isinstance(group, dict) and group for group in dependency_groups):
         return False
 
+    # npm may be installed beside node.exe without being added to PATH
+    # (common with portable/cached Node.js installations on Windows).
     npm = shutil.which("npm") or shutil.which("npm.cmd")
-    if not npm:
+    npm_cli = None
+    node_path = Path(node_executable).resolve() if node_executable else None
+    if not npm and node_path:
+        node_dir = node_path.parent
+        for candidate in (
+            node_dir / "npm.cmd",
+            node_dir / "npm",
+            node_dir / "node_modules" / "npm" / "bin" / "npm-cli.js",
+            node_dir.parent / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js",
+        ):
+            if candidate.is_file():
+                if candidate.name.lower() == "npm-cli.js":
+                    npm_cli = candidate
+                else:
+                    npm = str(candidate)
+                break
+
+    if not npm and not npm_cli:
         raise RuntimeError(
-            "This Node.js project declares npm dependencies, but npm was not found. "
-            "Install Node.js with npm available on PATH, then retry the comparison."
+            "This Node.js project declares npm dependencies, but npm could not be found "
+            "on PATH or beside the Node.js executable. Install the official Node.js "
+            "LTS package (including npm), or add its installation folder to PATH, "
+            "then restart the application."
         )
 
     if (root / "package-lock.json").is_file() or (root / "npm-shrinkwrap.json").is_file():
@@ -331,7 +352,10 @@ def _install_node_dependencies(root: Path, timeout=180):
             "--package-lock=false",
         ]
 
-    if os.name == "nt":
+    if npm_cli:
+        command = [str(node_path), str(npm_cli), *arguments]
+        use_shell = False
+    elif os.name == "nt":
         command = subprocess.list2cmdline([npm, *arguments])
         use_shell = True
     else:
@@ -376,7 +400,7 @@ def run_node_version(worktree_path, scenario, timeout=300):
             "For a React UI, use static architecture analysis unless a browser-driven runtime scenario is provided."
         )
     node = _resolve_node_executable()
-    _install_node_dependencies(root, timeout=min(timeout, 180))
+    _install_node_dependencies(root, timeout=min(timeout, 180), node_executable=node)
 
     architecture = RuntimeArchitecture(entry_point=scenario)
     architecture.modules.add(scenario_path.relative_to(root).as_posix())
