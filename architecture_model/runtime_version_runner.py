@@ -206,7 +206,7 @@ def discover_python_entrypoints(worktree_path):
             continue
         if any(part.lower() in ignored for part in relative.parts[:-1]):
             continue
-        if path.name.startswith("test_") or path.name.endswith("_test.py"):
+        if path.name.endswith("_test.py"):
             continue
         if path.name.lower() in non_entry_names:
             continue
@@ -217,6 +217,27 @@ def discover_python_entrypoints(worktree_path):
                 continue
             tree = ast.parse(source, filename=str(path))
         except (OSError, SyntaxError, ValueError):
+            continue
+
+        call_names = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    call_names.add(node.func.id)
+                elif isinstance(node.func, ast.Attribute):
+                    call_names.add(node.func.attr)
+
+        # This root-level script runs the real parser and architecture
+        # recovery pipeline. It is an application workflow, unlike the
+        # repository's small synthetic demonstration scripts.
+        is_recovery_workflow = (
+            path.name.lower() == "test_architecture_recovery.py"
+            and {"parse_folder", "recover_architecture"}.issubset(call_names)
+        )
+        if path.name.startswith("test_") and not is_recovery_workflow:
+            continue
+        if is_recovery_workflow:
+            candidates.append((1000, -1, relative.as_posix()))
             continue
 
         lowered = source.lower()
@@ -850,10 +871,8 @@ def run_version(
                 f"Worktree: {worktree_path}\n"
                 f"Scenario: {scenario}\n"
                 f"Timeout: {timeout} seconds\n"
-                "If this scenario expects keyboard input, create "
-                "'architecture_runtime_input.txt' in the selected repository root "
-                "with one response per line. The same contents are supplied to V1 and V2. "
-                "Interactive input is closed after the supplied text to prevent indefinite waits.\n"
+                "Interactive keyboard input is not collected during automatic V1/V2 comparison. "
+                "Use a non-interactive application workflow.\n"
             ) from error
 
         if not output_file.exists():
@@ -965,13 +984,11 @@ def run_version(
 
         if execution_error:
 
-            if "EOFError" in execution_error and not runtime_input.strip():
+            if "EOFError" in execution_error:
                 raise RuntimeError(
-                    "This Python scenario requests keyboard input, but no input was supplied. "
-                    "Interactive keyboard input is not supported for unattended V1/V2 "
-                    "comparison. The runner will not guess answers or require a manual "
-                    "input file. Choose a shared non-interactive CLI/runtime scenario instead. "
-                    f"Scenario: {scenario}; version: {get_commit_hash(worktree_path)}."
+                    "The selected Python workload requested interactive keyboard input. "
+                    "Automatic V1/V2 comparison requires a non-interactive workload. "
+                    f"Workload: {scenario}; version: {get_commit_hash(worktree_path)}."
                 )
 
             raise RuntimeError(
@@ -1201,22 +1218,33 @@ def list_runtime_entrypoints_by_commit(repository_path, v1_commit: str, v2_commi
             )
 
 
-def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
-    """Choose a Python entry point present in both selected commit snapshots."""
-    v1_candidates = set(discover_python_entrypoints(v1_path))
-    v2_candidates = set(discover_python_entrypoints(v2_path))
+def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
+    """Choose one bounded runtime workload shared by both selected commits."""
+    v1_candidates = set(discover_runtime_entrypoints(v1_path))
+    v2_candidates = set(discover_runtime_entrypoints(v2_path))
     common = v1_candidates & v2_candidates
     if not common:
         raise FileNotFoundError(
-            "The selected commits have no Python entry point with the same relative path. "
-            "For renamed or moved entry points, pass v1_scenario and v2_scenario separately. "
-            "Streamlit/Flask/FastAPI/Gradio launchers are excluded because they keep running "
-            "and cannot be traced as bounded scenarios. Add a short CLI/test scenario that "
-            "exercises the application logic, then retry."
+            "The selected commits do not contain a shared, supported, bounded runtime workload. "
+            "Long-running Streamlit/Flask/FastAPI/Gradio launchers are intentionally excluded. "
+            "For the Architecture Modeling System, the automatic workload is "
+            "test_architecture_recovery.py because it runs the real source parser and "
+            "architecture recovery pipeline."
         )
-    preferred = ("runtime_scenario.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred = (
+        "runtime_scenario.py", "test_architecture_recovery.py",
+        "main.py", "run.py", "cli.py", "__main__.py",
+    )
     preferred_order = {name: index for index, name in enumerate(preferred)}
-    return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
+    return sorted(
+        common,
+        key=lambda value: (
+            preferred_order.get(Path(value).name.lower(), len(preferred)),
+            0 if Path(value).suffix.lower() == ".py" else 1,
+            len(Path(value).parts),
+            value.lower(),
+        ),
+    )[0]
 
 
 def _runtime_metrics(architecture):
@@ -1260,12 +1288,7 @@ def run_version_pair(
     if not (repository / ".git").exists():
         raise ValueError(f"Selected repository is not a Git checkout: {repository}")
 
-    if runtime_input is None:
-        input_file = repository / "architecture_runtime_input.txt"
-        try:
-            runtime_input = input_file.read_text(encoding="utf-8") if input_file.is_file() else ""
-        except OSError as error:
-            raise RuntimeError(f"Could not read runtime input file {input_file}: {error}") from error
+    runtime_input = runtime_input or ""
 
     if not v1_commit or not v2_commit:
         raise ValueError("Select two commits before running Runtime Architecture comparison.")
@@ -1296,7 +1319,7 @@ def run_version_pair(
                 if scenario:
                     v1_scenario = v2_scenario = scenario
                 else:
-                    v1_scenario = v2_scenario = _common_python_entrypoint(v1_path, v2_path)
+                    v1_scenario = v2_scenario = _common_runtime_entrypoint(v1_path, v2_path)
             else:
                 v1_scenario = v1_scenario or scenario
                 v2_scenario = v2_scenario or scenario
