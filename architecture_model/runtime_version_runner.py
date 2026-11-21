@@ -395,7 +395,12 @@ def is_project_file(filename):
 
     try:
         source_path = Path(raw_filename).resolve(strict=True)
-        source_path.relative_to(worktree)
+        relative_path = source_path.relative_to(worktree)
+        # Test drivers are workload inputs, not application architecture modules.
+        if source_path.name.lower().startswith("test_") or any(
+            part.lower() in {"tests", "test"} for part in relative_path.parts[:-1]
+        ):
+            return False
         return source_path.is_file() and source_path.suffix.lower() in {".py", ".pyw"}
     except (ValueError, OSError, RuntimeError):
         return False
@@ -489,7 +494,7 @@ try:
     entrypoint_module = ".".join(relative_entrypoint.with_suffix("").parts) or "__main__"
 except (ValueError, OSError, RuntimeError):
     entrypoint_module = None
-if entrypoint_module:
+if entrypoint_module and not scenario_path.name.lower().startswith("test_"):
     executed_modules.add(entrypoint_module)
 
 old_cwd = Path.cwd()
@@ -1284,14 +1289,26 @@ def _create_automatic_architecture_workload(
     # present in each selected commit and is excluded from project metrics.
     workload = Path(temporary_root) / "architecture_runtime_workload.py"
     workload.write_text(
-        "from src.parser import parse_folder\n"
-        "parsed_results = parse_folder('.')\n"
-        "try:\n"
-        "    from architecture_model.recovery import recover_architecture\n"
-        "except ImportError:\n"
-        "    recover_architecture = None\n"
-        "if recover_architecture is not None:\n"
-        "    recover_architecture(parsed_results)\n",
+        "import runpy\\n"
+        "from pathlib import Path\\n"
+        "root = Path.cwd()\\n"
+        "from src.parser import parse_folder\\n"
+        "parsed_results = parse_folder(str(root))\\n"
+        "try:\\n"
+        "    from architecture_model.recovery import recover_architecture\\n"
+        "except ModuleNotFoundError as error:\\n"
+        "    if error.name not in {'architecture_model', 'architecture_model.recovery'}:\\n"
+        "        raise\\n"
+        "else:\\n"
+        "    recover_architecture(parsed_results)\\n"
+        "def run_if_available(relative, required):\\n"
+        "    target = root / relative\\n"
+        "    if target.is_file() and all((root / item).is_file() for item in required):\\n"
+        "        runpy.run_path(str(target), run_name='__runtime_workload_' + target.stem)\\n"
+        "run_if_available('test_architecture_diff.py', ('architecture_model/model.py', 'architecture_model/diff.py'))\\n"
+        "run_if_available('test_architecture_model.py', ('architecture_model/model.py',))\\n"
+        "run_if_available('architecture_model/test_architecture_timeline.py', ('architecture_model/model.py', 'architecture_model/timeline.py', 'architecture_model/diff.py'))\\n"
+        "run_if_available('architecture_model/test_snapshot_store.py', ('architecture_model/model.py', 'architecture_model/snapshot_store.py'))\\n",
         encoding="utf-8",
     )
     return str(workload)
@@ -1368,14 +1385,28 @@ def run_version_pair(
                 if scenario:
                     v1_scenario = v2_scenario = scenario
                 else:
-                    common_workload = _common_runtime_entrypoint(v1_path, v2_path)
-                    if common_workload:
-                        v1_scenario = v2_scenario = common_workload
-                    else:
+                    # The Architecture Modeling System has a stable parser API
+                    # across its history. Use one generated workload to exercise
+                    # parser/recovery plus available core diff, timeline, model,
+                    # and snapshot-store workflows in each selected commit.
+                    has_shared_parser = all(
+                        (path / "src" / "parser.py").is_file()
+                        for path in (v1_path, v2_path)
+                    )
+                    if has_shared_parser:
                         generated_workload = _create_automatic_architecture_workload(
                             v1_path, v2_path, temp_root
                         )
                         v1_scenario = v2_scenario = generated_workload
+                    else:
+                        common_workload = _common_runtime_entrypoint(v1_path, v2_path)
+                        if common_workload:
+                            v1_scenario = v2_scenario = common_workload
+                        else:
+                            generated_workload = _create_automatic_architecture_workload(
+                                v1_path, v2_path, temp_root
+                            )
+                            v1_scenario = v2_scenario = generated_workload
             else:
                 v1_scenario = v1_scenario or scenario
                 v2_scenario = v2_scenario or scenario
