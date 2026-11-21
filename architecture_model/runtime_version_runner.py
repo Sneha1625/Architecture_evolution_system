@@ -1317,13 +1317,46 @@ def run_version_pair(
                             "Choose a bounded scenario that does not initialize hardware."
                         )
 
+            def adapter_family(selected):
+                suffix = Path(selected).suffix.lower()
+                if suffix in {".py", ".pyw"}:
+                    return "python"
+                if suffix in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
+                    return "node"
+                if suffix == ".rb":
+                    return "ruby"
+                if suffix == ".go":
+                    return "go"
+                if suffix == ".java":
+                    return "java"
+                if suffix in {".c", ".cc", ".cpp", ".cxx", ".c++"}:
+                    return "native"
+                if suffix == ".csproj":
+                    return "csharp"
+                if Path(selected).name.lower() == "cargo.toml":
+                    return "rust"
+                if suffix == ".php":
+                    return "php"
+                return "unsupported"
+
+            v1_family, v2_family = adapter_family(v1_scenario), adapter_family(v2_scenario)
+            if v1_family == "unsupported" or v2_family == "unsupported":
+                raise ValueError(
+                    "The selected V1 or V2 scenario has no supported runtime adapter."
+                )
+            if v1_family != v2_family:
+                raise ValueError(
+                    f"V1 uses the {v1_family} runtime adapter but V2 uses {v2_family}. "
+                    "Choose scenarios implemented in the same language/runtime family "
+                    "so their execution evidence can be compared fairly."
+                )
+
             # Use one compatible interpreter for Python versions; other
             # language adapters select their own installed toolchains.
-            python_scenario = (
-                v1_scenario if Path(v1_scenario).suffix.lower() in {".py", ".pyw"}
-                else v2_scenario
+            pair_python = (
+                _select_python_for_pair(v1_path, v2_path, v1_scenario)
+                if v1_family == "python" else Path(sys.executable)
             )
-            pair_python = _select_python_for_pair(v1_path, v2_path, python_scenario)
 
             def execute_selected(worktree, selected):
                 suffix = Path(selected).suffix.lower()
