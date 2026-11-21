@@ -253,25 +253,29 @@ def _render_runtime_evolution(repository_path):
 
         scenario_col1, scenario_col2 = st.columns(2)
         with scenario_col1:
-            v1_scenario = st.selectbox(
-                "V1 runtime scenario",
-                options=v1_scenarios,
-                index=preferred_index(v1_scenarios) if v1_scenarios else None,
-                help="Select the entry point that represents the workflow in the older commit.",
-                key="runtime_v1_scenario",
-                disabled=not v1_scenarios,
+            v1_scenario = (
+                st.selectbox(
+                    "V1 runtime scenario",
+                    options=v1_scenarios,
+                    index=preferred_index(v1_scenarios),
+                    help="Select the entry point that represents the workflow in the older commit.",
+                    key="runtime_v1_scenario",
+                )
+                if v1_scenarios else None
             )
         with scenario_col2:
-            v2_scenario = st.selectbox(
-                "V2 runtime scenario",
-                options=v2_scenarios,
-                index=preferred_index(v2_scenarios) if v2_scenarios else None,
-                help=(
-                    "Select the corresponding workflow in the newer commit. "
-                    "The path may differ from V1 if the entry point was renamed or moved."
-                ),
-                key="runtime_v2_scenario",
-                disabled=not v2_scenarios,
+            v2_scenario = (
+                st.selectbox(
+                    "V2 runtime scenario",
+                    options=v2_scenarios,
+                    index=preferred_index(v2_scenarios),
+                    help=(
+                        "Select the corresponding workflow in the newer commit. "
+                        "The path may differ from V1 if the entry point was renamed or moved."
+                    ),
+                    key="runtime_v2_scenario",
+                )
+                if v2_scenarios else None
             )
 
         runtime_input = st.text_area(
@@ -316,7 +320,7 @@ def _render_runtime_evolution(repository_path):
 
     if Path(v1_scenario).name.lower() == "sample_project.py" or Path(v2_scenario).name.lower() == "sample_project.py":
         st.warning(
-            "sample_project.py is a small demonstration scenario. It only reports behavior "
+            "At least one selected sample_project.py is a small demonstration scenario. It only reports behavior "
             "inside the functions it actually calls; it does not exercise the full repository. "
             "For meaningful application-wide evidence, select a shared runtime_scenario.py "
             "or a CLI/test scenario that invokes representative application workflows in both commits."
