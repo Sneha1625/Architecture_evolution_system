@@ -174,7 +174,9 @@ def _render_runtime_evolution(repository_path):
     )
     st.info(
         "Runtime V1/V2 execution evidence currently supports Python, JavaScript, "
-        "erasable TypeScript, Ruby, Go, Java, C, C++, C#, Rust, and PHP when the required runtimes/tools are installed. "
+        "TypeScript, Ruby, Go, Java, C, C++, C#, Rust, and PHP when the required runtimes/tools are installed. "
+        "For Node.js repositories, a declared Jest/Vitest/Mocha test script is preferred when available, "
+        "so application routes and functions are actually exercised rather than only imported. "
         "Go, C/C++, C#, and Rust use compiler coverage to identify executed source files (not call "
         "edges or call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
         "counts); PHP uses Xdebug function traces. Static architecture recovery supports all 11 "
@@ -245,8 +247,8 @@ def _render_runtime_evolution(repository_path):
         return
 
     st.caption(
-        "The runtime workload is selected automatically from runnable application code "
-        "available in both selected commits."
+        "The runtime workload is selected automatically from a common runnable application "
+        "entry point or declared test suite available in both selected commits."
     )
 
     with st.spinner("Automatically selecting and running the same application workload in V1 and V2..."):
