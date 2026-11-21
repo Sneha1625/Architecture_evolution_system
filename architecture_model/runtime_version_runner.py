@@ -1377,7 +1377,7 @@ def run_version_pair(
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
-                "scenario": v2_scenario if v1_scenario == v2_scenario else f"V1: {v1_scenario} | V2: {v2_scenario}",
+                "scenario": v2_scenario,
                 "v1_scenario": v1_scenario,
                 "v2_scenario": v2_scenario,
                 "v1_runtime": v1_runtime,
