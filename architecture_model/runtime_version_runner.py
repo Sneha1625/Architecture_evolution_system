@@ -182,6 +182,76 @@ def _python_entrypoint_runtime_blocker(worktree_path, entrypoint):
     return None
 
 
+def _is_flask_test_client_project(worktree_path):
+    """Return True for a Flask app that exposes routes suitable for test_client."""
+    root = Path(worktree_path).resolve()
+    app_file = root / "app.py"
+    template_file = root / "templates" / "index.html"
+    if not app_file.is_file() or not template_file.is_file():
+        return False
+    try:
+        import ast
+        tree = ast.parse(app_file.read_text(encoding="utf-8", errors="ignore"))
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+    imports_flask = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "flask"
+        and any(alias.name == "Flask" for alias in node.names)
+        for node in ast.walk(tree)
+    )
+    has_route = any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr == "route"
+            for decorator in node.decorator_list
+        )
+        for node in tree.body
+    )
+    starts_server = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run"
+        for node in ast.walk(tree)
+    )
+    return imports_flask and has_route and starts_server
+
+
+def _create_automatic_flask_test_client_workload(v1_path, v2_path, temporary_root):
+    """Exercise Flask routes with its in-process test client, never starting a server."""
+    if not all(_is_flask_test_client_project(path) for path in (v1_path, v2_path)):
+        raise FileNotFoundError(
+            "A shared Flask application with app.py and templates/index.html was not found."
+        )
+
+    workload = Path(temporary_root) / "flask_test_client_runtime.py"
+    workload.write_text(
+        "import json\n"
+        "import os\n"
+        "import urllib.request\n"
+        "os.environ.setdefault('API_KEY', 'architecture-runtime-test-key')\n"
+        "os.environ.setdefault('MODEL_URL', 'https://runtime.invalid/sentiment')\n"
+        "class _RuntimeResponse:\n"
+        "    def read(self):\n"
+        "        return json.dumps([{'label': 'POSITIVE'}]).encode('utf-8')\n"
+        "def _runtime_urlopen(request, *args, **kwargs):\n"
+        "    return _RuntimeResponse()\n"
+        "urllib.request.urlopen = _runtime_urlopen\n"
+        "from app import app\n"
+        "client = app.test_client()\n"
+        "get_response = client.get('/')\n"
+        "assert get_response.status_code == 200, get_response.status_code\n"
+        "post_response = client.post('/', data={'text': 'runtime comparison test'})\n"
+        "assert post_response.status_code == 200, post_response.status_code\n"
+        "assert b'POSITIVE' in post_response.data, post_response.data[:500]\n",
+        encoding="utf-8",
+    )
+    return str(workload)
+
+
 def discover_python_entrypoints(worktree_path):
     """Find likely bounded Python execution scenarios without guessing.
 
@@ -321,6 +391,9 @@ def discover_python_entrypoints(worktree_path):
             20 if filename_rank < 99 else 0
         ) - min(len(relative.parts), 10)
         candidates.append((score, filename_rank, relative.as_posix()))
+
+    if _is_flask_test_client_project(root):
+        candidates.append((1100, -1, 'flask:test-client'))
 
     candidates.sort(key=lambda item: (-item[0], item[1], item[2].lower()))
     return [item[2] for item in candidates[:100]]
@@ -1262,7 +1335,7 @@ def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
     if not common:
         return None
     preferred = (
-        "npm:test", "runtime_scenario.py", "test_architecture_recovery.py",
+        "flask:test-client", "npm:test", "runtime_scenario.py", "test_architecture_recovery.py",
         "main.py", "run.py", "cli.py", "__main__.py",
     )
     preferred_order = {name: index for index, name in enumerate(preferred)}
@@ -1429,7 +1502,12 @@ def run_version_pair(
                         v1_scenario = v2_scenario = generated_workload
                     else:
                         common_workload = _common_runtime_entrypoint(v1_path, v2_path)
-                        if common_workload:
+                        if common_workload == "flask:test-client":
+                            generated_workload = _create_automatic_flask_test_client_workload(
+                                v1_path, v2_path, temp_root
+                            )
+                            v1_scenario = v2_scenario = generated_workload
+                        elif common_workload:
                             v1_scenario = v2_scenario = common_workload
                         else:
                             generated_workload = _create_automatic_architecture_workload(
