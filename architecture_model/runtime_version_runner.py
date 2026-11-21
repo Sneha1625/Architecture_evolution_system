@@ -1,8 +1,8 @@
 """
 Runtime Version Runner
 
-Executes the same Python scenario against two Git worktrees and
-captures runtime module-to-module interactions.
+Executes corresponding, bounded workloads against two isolated Git worktrees
+and captures language-specific runtime architecture evidence.
 
 This allows the Architecture Evolution System to compare:
 
