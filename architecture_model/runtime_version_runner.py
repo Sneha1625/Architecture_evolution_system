@@ -182,7 +182,6 @@ def discover_python_entrypoints(worktree_path):
         "run.py": 3,
         "__main__.py": 4,
         "manage.py": 5,
-        "sample_project.py": 6,
     }
     ignored = {
         ".git", ".venv", "venv", "env", "__pycache__", "site-packages",
@@ -1215,7 +1214,7 @@ def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
             "and cannot be traced as bounded scenarios. Add a short CLI/test scenario that "
             "exercises the application logic, then retry."
         )
-    preferred = ("runtime_scenario.py", "sample_project.py", "main.py", "run.py", "cli.py", "__main__.py")
+    preferred = ("runtime_scenario.py", "main.py", "run.py", "cli.py", "__main__.py")
     preferred_order = {name: index for index, name in enumerate(preferred)}
     return sorted(common, key=lambda value: (preferred_order.get(Path(value).name, len(preferred)), len(Path(value).parts), value.lower()))[0]
 
