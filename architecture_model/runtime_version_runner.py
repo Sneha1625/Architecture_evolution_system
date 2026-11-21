@@ -593,6 +593,12 @@ def validate_worktree(
             raise FileNotFoundError("No Python entry point found in this repository. Add/select a runnable .py entry point.")
         scenario = candidates[0]
 
+    # npm:test is a virtual scenario executed from the selected commit's package.json.
+    if scenario == "npm:test":
+        if not (worktree_path / "package.json").is_file():
+            raise FileNotFoundError("The selected commit has no package.json for npm:test.")
+        return
+
     scenario_path = (
         worktree_path / scenario
     )
@@ -1169,6 +1175,7 @@ def discover_runtime_entrypoints(worktree_path):
     except ImportError:
         pass
     return sorted(set(candidates), key=lambda value: (
+        0 if value == "npm:test" else 1,
         0 if Path(value).suffix.lower() == ".py" else 1,
         value.lower(),
     ))
@@ -1193,6 +1200,7 @@ def list_common_runtime_entrypoints(repository_path, v1_commit: str, v2_commit: 
                 added.append(path)
             common = set(discover_runtime_entrypoints(v1_path)) & set(discover_runtime_entrypoints(v2_path))
             return sorted(common, key=lambda value: (
+                0 if value == "npm:test" else 1,
                 0 if Path(value).name.lower() in {"runtime_scenario.py", "runtime_scenario.js"} else 1,
                 0 if Path(value).suffix.lower() == ".py" else 1,
                 len(Path(value).parts),
@@ -1254,7 +1262,7 @@ def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
     if not common:
         return None
     preferred = (
-        "runtime_scenario.py", "test_architecture_recovery.py",
+        "npm:test", "runtime_scenario.py", "test_architecture_recovery.py",
         "main.py", "run.py", "cli.py", "__main__.py",
     )
     preferred_order = {name: index for index, name in enumerate(preferred)}
@@ -1449,6 +1457,8 @@ def run_version_pair(
                         )
 
             def adapter_family(selected):
+                if selected == "npm:test":
+                    return "node"
                 suffix = Path(selected).suffix.lower()
                 if suffix in {".py", ".pyw"}:
                     return "python"
@@ -1490,6 +1500,9 @@ def run_version_pair(
             )
 
             def execute_selected(worktree, selected):
+                if selected == "npm:test":
+                    from architecture_model.node_runtime_adapter import run_node_version
+                    return run_node_version(worktree, scenario=selected, timeout=timeout)
                 suffix = Path(selected).suffix.lower()
                 if suffix in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
                     from architecture_model.node_runtime_adapter import run_node_version
