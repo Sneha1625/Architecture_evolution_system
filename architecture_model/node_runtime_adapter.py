@@ -290,6 +290,73 @@ def _resolve_node_executable():
         return node
     return _provision_node_runtime()
 
+def _install_node_dependencies(root: Path, timeout=180):
+    """Install a selected commit's declared npm dependencies inside its isolated worktree.
+
+    Lifecycle scripts are disabled because comparison only needs the dependency
+    packages to load and execute the selected scenario. This keeps installation
+    bounded and avoids running arbitrary package postinstall commands.
+    """
+    package_file = root / "package.json"
+    if not package_file.is_file():
+        return False
+
+    try:
+        package_data = json.loads(package_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"Could not read Node.js package.json: {error}") from error
+
+    dependency_groups = (
+        package_data.get("dependencies"),
+        package_data.get("devDependencies"),
+        package_data.get("optionalDependencies"),
+    )
+    if not any(isinstance(group, dict) and group for group in dependency_groups):
+        return False
+
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    if not npm:
+        raise RuntimeError(
+            "This Node.js project declares npm dependencies, but npm was not found. "
+            "Install Node.js with npm available on PATH, then retry the comparison."
+        )
+
+    if (root / "package-lock.json").is_file() or (root / "npm-shrinkwrap.json").is_file():
+        arguments = ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]
+    else:
+        # Repositories using pnpm/yarn lockfiles are resolved from package.json
+        # inside the isolated worktree without creating a new lockfile.
+        arguments = [
+            "install", "--ignore-scripts", "--no-audit", "--no-fund",
+            "--package-lock=false",
+        ]
+
+    if os.name == "nt":
+        command = subprocess.list2cmdline([npm, *arguments])
+        use_shell = True
+    else:
+        command = [npm, *arguments]
+        use_shell = False
+
+    try:
+        process = subprocess.run(
+            command, cwd=str(root), capture_output=True, text=True,
+            timeout=timeout, shell=use_shell,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"Installing Node.js dependencies exceeded {timeout} seconds for this commit."
+        ) from error
+
+    if process.returncode != 0:
+        details = (process.stderr or process.stdout or "npm exited unsuccessfully")[-5000:]
+        raise RuntimeError(
+            f"Could not install Node.js dependencies for {root.name} "
+            f"(npm exit {process.returncode}):\\n{details}"
+        )
+    return True
+
+
 def run_node_version(worktree_path, scenario, timeout=300):
     """Execute one JS scenario and return project-only runtime evidence."""
     root = Path(worktree_path).resolve()
@@ -309,6 +376,7 @@ def run_node_version(worktree_path, scenario, timeout=300):
             "For a React UI, use static architecture analysis unless a browser-driven runtime scenario is provided."
         )
     node = _resolve_node_executable()
+    _install_node_dependencies(root, timeout=min(timeout, 180))
 
     architecture = RuntimeArchitecture(entry_point=scenario)
     architecture.modules.add(scenario_path.relative_to(root).as_posix())
