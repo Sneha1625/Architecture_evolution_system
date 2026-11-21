@@ -208,6 +208,10 @@ def discover_python_entrypoints(worktree_path):
             continue
         if path.name.endswith("_test.py"):
             continue
+        # Never select the standalone demo calculator as the application's
+        # runtime workload; it is unrelated to the loaded repository logic.
+        if path.name.lower() == "sample_project.py":
+            continue
         if path.name.lower() in non_entry_names:
             continue
 
