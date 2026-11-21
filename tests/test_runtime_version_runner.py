@@ -45,6 +45,21 @@ def test_runtime_scenario_receives_multiline_stdin(tmp_path):
     assert architecture.total_calls >= 0
 
 
+def test_entrypoint_discovery_skips_interactive_keyboard_workloads(tmp_path):
+    (tmp_path / "minipy").mkdir()
+    (tmp_path / "minipy" / "__main__.py").write_text(
+        "def run():\\n"
+        "    first = int(input('First: '))\\n"
+        "    second = int(input('Second: '))\\n"
+        "    print(first + second)\\n"
+        "if __name__ == '__main__':\\n"
+        "    run()\\n",
+        encoding="utf-8",
+    )
+
+    assert "minipy/__main__.py" not in discover_python_entrypoints(tmp_path)
+
+
 def test_entrypoint_discovery_ignores_server_launchers(tmp_path):
     (tmp_path / "app.py").write_text(
         "from flask import Flask\napp = Flask(__name__)\napp.run()\n",
