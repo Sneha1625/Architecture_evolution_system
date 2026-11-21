@@ -250,7 +250,7 @@ def test_node_runtime_installs_dependencies_from_package_json(tmp_path, monkeypa
         "architecture_model.node_runtime_adapter.subprocess.run", fake_run
     )
 
-    assert _install_node_dependencies(tmp_path) is True
+    assert _install_node_dependencies(tmp_path, node_executable="node") is True
     assert len(npm_calls) == 1
     command, options = npm_calls[0]
     assert "install" in command
@@ -402,3 +402,30 @@ def test_runtime_pair_automatically_uses_npm_test_for_both_commits(tmp_path):
     assert "src/service.js" in result["v2_runtime"].modules
     assert result["v1_runtime"].get_module_count() > 0
     assert result["v2_runtime"].get_module_count() > 0
+
+
+def test_npm_resolver_uses_bundled_runtime_when_path_has_no_npm(tmp_path, monkeypatch):
+    from architecture_model.node_runtime_adapter import _resolve_npm_invocation
+
+    node_home = tmp_path / "node-runtime"
+    node_home.mkdir()
+    node = node_home / ("node.exe" if __import__("os").name == "nt" else "node")
+    node.write_text("", encoding="utf-8")
+    npm_cli = node_home / "node_modules" / "npm" / "bin" / "npm-cli.js"
+    npm_cli.parent.mkdir(parents=True)
+    npm_cli.write_text("// npm cli placeholder\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter.shutil.which",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter._provision_node_runtime",
+        lambda: str(node),
+    )
+
+    resolved_node, resolved_cli, npm_command = _resolve_npm_invocation("missing-node")
+
+    assert resolved_node == str(node.resolve())
+    assert resolved_cli == str(npm_cli)
+    assert npm_command is None
