@@ -67,10 +67,14 @@ def discover_node_entrypoints(worktree_path):
         try:
             package_data = json.loads(package_file.read_text(encoding="utf-8"))
             test_script = package_data.get("scripts", {}).get("test", "")
-            if isinstance(test_script, str) and re.search(
-                r"\b(?:jest|vitest|mocha|ava|tap|node\s+--test)\b",
-                test_script,
-                re.IGNORECASE,
+            if (
+                isinstance(test_script, str)
+                and re.search(
+                    r"\b(?:jest|vitest|mocha|ava|tap|node\s+--test)\b",
+                    test_script,
+                    re.IGNORECASE,
+                )
+                and not re.search(r"\b--watch(?:All)?\b", test_script, re.IGNORECASE)
             ):
                 candidates.append("npm:test")
         except (OSError, json.JSONDecodeError, AttributeError):
