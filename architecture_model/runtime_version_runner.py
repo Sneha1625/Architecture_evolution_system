@@ -1269,7 +1269,7 @@ def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
     return sorted(
         common,
         key=lambda value: (
-            preferred_order.get(Path(value).name.lower(), len(preferred)),
+            0 if value == "npm:test" else preferred_order.get(Path(value).name.lower(), len(preferred)),
             0 if Path(value).suffix.lower() == ".py" else 1,
             len(Path(value).parts),
             value.lower(),
