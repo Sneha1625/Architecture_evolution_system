@@ -225,3 +225,51 @@ def test_node_resolver_auto_provisions_when_missing(monkeypatch):
     )
 
     assert _resolve_node_executable() == "/cached/node"
+
+def test_node_runtime_installs_dependencies_from_package_json(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from architecture_model.node_runtime_adapter import _install_node_dependencies
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"dependencies": {"express": "^5.1.0"}}),
+        encoding="utf-8",
+    )
+    npm_calls = []
+
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter.shutil.which",
+        lambda name: "npm.cmd" if name in {"npm", "npm.cmd"} else None,
+    )
+
+    def fake_run(command, **kwargs):
+        npm_calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter.subprocess.run", fake_run
+    )
+
+    assert _install_node_dependencies(tmp_path) is True
+    assert len(npm_calls) == 1
+    command, options = npm_calls[0]
+    assert "install" in command
+    assert "--ignore-scripts" in command
+    assert options["cwd"] == str(tmp_path)
+
+
+def test_node_runtime_skips_npm_install_without_declared_dependencies(tmp_path, monkeypatch):
+    import json
+    from architecture_model.node_runtime_adapter import _install_node_dependencies
+
+    (tmp_path / "package.json").write_text(
+        json.dumps({"name": "no-dependencies", "scripts": {"start": "node main.js"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "architecture_model.node_runtime_adapter.shutil.which",
+        lambda _name: pytest.fail("npm should not be required without dependencies"),
+    )
+
+    assert _install_node_dependencies(tmp_path) is False
+
