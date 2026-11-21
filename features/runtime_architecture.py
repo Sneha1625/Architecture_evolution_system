@@ -19,7 +19,6 @@ from architecture_model.runtime_evolution import (
 )
 from architecture_model.runtime_version_runner import (
     list_repository_commits,
-    list_common_runtime_entrypoints,
     list_runtime_entrypoints_by_commit,
     run_version_pair,
 )
@@ -322,8 +321,8 @@ def _render_runtime_evolution(repository_path):
         st.warning(
             "At least one selected sample_project.py is a small demonstration scenario. It only reports behavior "
             "inside the functions it actually calls; it does not exercise the full repository. "
-            "For meaningful application-wide evidence, select a shared runtime_scenario.py "
-            "or a CLI/test scenario that invokes representative application workflows in both commits."
+            "For meaningful application-wide evidence, select corresponding V1 and V2 CLI/test "
+            "scenarios that invoke representative workflows in their respective commits."
         )
 
     with st.spinner("Running the selected V1 and V2 scenarios and collecting execution traces..."):
@@ -345,13 +344,12 @@ def _render_runtime_evolution(repository_path):
             )
 
         except FileNotFoundError as error:
-            # Runtime tracing requires a shared, bounded scenario in both
-            # selected commits. Keep the static
-            # repository graph, dependencies, and architecture history visible.
+            # Keep static architecture, dependencies, and history visible when
+            # either independently selected scenario cannot be validated.
             st.warning(
-                "Runtime execution comparison is unavailable for these commits. "
-                "The selected versions do not share a supported bounded scenario, "
-                "or a required runtime/tool is missing. Your static architecture graph, "
+                "Runtime execution comparison could not be completed. One selected "
+                "scenario may be missing from its commit, or a required runtime/tool "
+                "may be unavailable. Your static architecture graph, "
                 "dependency inventory, and snapshot history remain available above. "
                 "TypeScript requires syntax that Node.js can strip without a separate "
                 "build configuration. Check the error details below for the exact reason."
