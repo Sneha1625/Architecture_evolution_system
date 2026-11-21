@@ -177,6 +177,8 @@ def _render_runtime_evolution(repository_path):
         "TypeScript, Ruby, Go, Java, C, C++, C#, Rust, and PHP when the required runtimes/tools are installed. "
         "For Node.js repositories, a declared Jest/Vitest/Mocha test script is preferred when available, "
         "so application routes and functions are actually exercised rather than only imported. "
+        "Conventional Flask apps are exercised with Flask's in-process test client; the development server "
+        "is never started and outbound sentiment/API calls are stubbed during the bounded comparison. "
         "Go, C/C++, C#, and Rust use compiler coverage to identify executed source files (not call "
         "edges or call counts); Java uses sampled Flight Recorder stacks (not exact invocation "
         "counts); PHP uses Xdebug function traces. Static architecture recovery supports all 11 "
@@ -327,7 +329,13 @@ def _render_runtime_evolution(repository_path):
             versions["v2_commit"],
         )
 
-    if versions["scenario"] == "npm:test":
+    if Path(versions["scenario"]).name == "flask_test_client_runtime.py":
+        st.info(
+            "Runtime workload: Flask routes exercised with the in-process test client. "
+            "GET and POST requests are sent without starting a web server; the external "
+            "sentiment endpoint is stubbed so the comparison is repeatable and requires no API key."
+        )
+    elif versions["scenario"] == "npm:test":
         st.info(
             "Runtime workload: the repository's declared npm test script. Dependencies "
             "are installed in each isolated commit worktree, and V8 coverage identifies "
