@@ -134,8 +134,6 @@ def _project_module(url, root):
         return None
     if re.search(r"(?:\.test|\.spec)\.[cm]?[jt]sx?$", path.name, re.IGNORECASE):
         return None
-    # 
-        return None
     return relative.as_posix()
 
 
