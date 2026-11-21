@@ -130,21 +130,8 @@ def _python_entrypoint_runtime_blocker(worktree_path, entrypoint):
         except (OSError, SyntaxError, ValueError):
             continue
 
-        # A keyboard-driven script cannot be run deterministically without
-        # user-provided answers. Do not invent stdin for architecture analysis.
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                func = node.func
-                if isinstance(func, ast.Name) and func.id == "input":
-                    return "keyboard input"
-                if isinstance(func, ast.Attribute):
-                    owner = func.value
-                    if (
-                        func.attr in {"read", "readline", "readlines"}
-                        and isinstance(owner, ast.Attribute)
-                        and owner.attr == "stdin"
-                    ):
-                        return "keyboard input"
+        # Keyboard input is supported through the shared runtime_input payload.
+        # Only physical hardware access is treated as an automatic blocker.
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -1178,6 +1165,43 @@ def list_common_runtime_entrypoints(repository_path, v1_commit: str, v2_commit: 
             )
 
 
+def list_runtime_entrypoints_by_commit(repository_path, v1_commit: str, v2_commit: str):
+    """Discover runnable scenarios independently in each selected commit.
+
+    Scenario filenames may change between versions. Returning both inventories
+    lets the user map the corresponding V1 and V2 workflows explicitly.
+    """
+    repository = Path(repository_path).resolve()
+    if not repository.is_dir() or not (repository / ".git").exists():
+        raise ValueError(f"Selected repository is not a Git checkout: {repository}")
+
+    with tempfile.TemporaryDirectory(prefix="architecture_scenario_pair_discovery_") as temp:
+        root = Path(temp)
+        v1_path, v2_path = root / "version_1", root / "version_2"
+        added = []
+        try:
+            for path, commit in ((v1_path, v1_commit), (v2_path, v2_commit)):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "add", "--detach", str(path), commit],
+                    capture_output=True, text=True, check=True, timeout=120,
+                )
+                added.append(path)
+            return {
+                "v1": discover_runtime_entrypoints(v1_path),
+                "v2": discover_runtime_entrypoints(v2_path),
+            }
+        finally:
+            for path in reversed(added):
+                subprocess.run(
+                    ["git", "-C", str(repository), "worktree", "remove", "--force", str(path)],
+                    capture_output=True, text=True, timeout=60,
+                )
+            subprocess.run(
+                ["git", "-C", str(repository), "worktree", "prune"],
+                capture_output=True, text=True, timeout=30,
+            )
+
+
 def _common_python_entrypoint(v1_path: Path, v2_path: Path) -> str:
     """Choose a Python entry point present in both selected commit snapshots."""
     v1_candidates = set(discover_python_entrypoints(v1_path))
@@ -1219,13 +1243,17 @@ def run_version_pair(
     repository_path,
     v1_commit: str,
     v2_commit: str,
-    scenario: str = DEFAULT_SCENARIO,
+    scenario: str | None = None,
     timeout: int = 300,
     runtime_input: str | None = None,
+    v1_scenario: str | None = None,
+    v2_scenario: str | None = None,
 ):
     """
-    Execute the same Python entry point at two user-selected commits.
-    Each commit is checked out into an isolated temporary Git worktree.
+    Execute corresponding scenarios in two user-selected Git versions.
+
+    V1 and V2 may use different entry-point paths (for example, main.py in V1
+    and cli.py in V2). For Python, identical stdin text is supplied to both.
     """
     repository = Path(repository_path).resolve()
     if not repository.is_dir():
@@ -1233,17 +1261,13 @@ def run_version_pair(
     if not (repository / ".git").exists():
         raise ValueError(f"Selected repository is not a Git checkout: {repository}")
 
-    # Interactive Python scenarios can receive deterministic input without
-    # exposing a Streamlit text field. Read it once from the selected checkout
-    # and pass the identical payload to both commit worktrees.
     if runtime_input is None:
         input_file = repository / "architecture_runtime_input.txt"
         try:
             runtime_input = input_file.read_text(encoding="utf-8") if input_file.is_file() else ""
         except OSError as error:
-            raise RuntimeError(
-                f"Could not read runtime input file {input_file}: {error}"
-            ) from error
+            raise RuntimeError(f"Could not read runtime input file {input_file}: {error}") from error
+
     if not v1_commit or not v2_commit:
         raise ValueError("Select two commits before running Runtime Architecture comparison.")
     if v1_commit == v2_commit:
@@ -1257,8 +1281,7 @@ def run_version_pair(
 
     with tempfile.TemporaryDirectory(prefix="architecture_commit_compare_") as temp:
         temp_root = Path(temp)
-        v1_path = temp_root / "version_1"
-        v2_path = temp_root / "version_2"
+        v1_path, v2_path = temp_root / "version_1", temp_root / "version_2"
         added = []
         try:
             for path, commit in ((v1_path, v1_commit), (v2_path, v2_commit)):
@@ -1268,89 +1291,100 @@ def run_version_pair(
                 )
                 added.append(path)
 
-            if not scenario:
-                scenario = _common_python_entrypoint(v1_path, v2_path)
-            validate_worktree(v1_path, scenario)
-            validate_worktree(v2_path, scenario)
-
-            # Defend against a stale Streamlit selection or a caller that
-            # explicitly passes a hardware-dependent entry point. Discovery
-            # normally filters these, but never launch a physical-camera app
-            # in the isolated runtime worker.
-            if Path(scenario).suffix.lower() in {".py", ".pyw"}:
-                v1_blocker = _python_entrypoint_runtime_blocker(v1_path, scenario)
-                v2_blocker = _python_entrypoint_runtime_blocker(v2_path, scenario)
-                blocker = v1_blocker or v2_blocker
-                if blocker:
-                    detail = (
-                        "requires access to a physical camera"
-                        if blocker == "camera"
-                        else "requests keyboard input"
-                    )
-                    raise ValueError(
-                        f"Runtime scenario '{scenario}' {detail} in at least one "
-                        "selected commit. It is not suitable for unattended runtime "
-                        "comparison. Choose a shared non-interactive scenario instead; "
-                        "static architecture analysis remains available."
-                    )
-
-            # Resolve once from the combined V1/V2 requirements so both
-            # snapshots run under the same Python version.
-            pair_python = _select_python_for_pair(v1_path, v2_path, scenario)
-
-            if Path(scenario).suffix.lower() in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
-                from architecture_model.node_runtime_adapter import run_node_version
-                v1_runtime = run_node_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_node_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).suffix.lower() == ".rb":
-                from architecture_model.ruby_runtime_adapter import run_ruby_version
-                v1_runtime = run_ruby_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_ruby_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).suffix.lower() == ".go":
-                from architecture_model.go_runtime_adapter import run_go_version
-                v1_runtime = run_go_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_go_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).suffix.lower() == ".java":
-                from architecture_model.java_runtime_adapter import run_java_version
-                v1_runtime = run_java_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_java_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).suffix.lower() in {".c", ".cc", ".cpp", ".cxx", ".c++"}:
-                from architecture_model.native_runtime_adapter import run_native_version
-                v1_runtime = run_native_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_native_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).suffix.lower() == ".csproj":
-                from architecture_model.csharp_runtime_adapter import run_csharp_version
-                v1_runtime = run_csharp_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_csharp_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).name.lower() == "cargo.toml":
-                from architecture_model.rust_runtime_adapter import run_rust_version
-                v1_runtime = run_rust_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_rust_version(v2_path, scenario=scenario, timeout=timeout)
-            elif Path(scenario).suffix.lower() == ".php":
-                from architecture_model.php_runtime_adapter import run_php_version
-                v1_runtime = run_php_version(v1_path, scenario=scenario, timeout=timeout)
-                v2_runtime = run_php_version(v2_path, scenario=scenario, timeout=timeout)
+            # Backward compatibility: a single scenario still runs in both
+            # versions. If omitted, discover a common Python entry point.
+            if v1_scenario is None and v2_scenario is None:
+                if scenario:
+                    v1_scenario = v2_scenario = scenario
+                else:
+                    v1_scenario = v2_scenario = _common_python_entrypoint(v1_path, v2_path)
             else:
-                v1_runtime = run_version(
-                    v1_path, scenario=scenario, timeout=timeout,
-                    runtime_input=runtime_input, python_executable=pair_python,
+                v1_scenario = v1_scenario or scenario
+                v2_scenario = v2_scenario or scenario
+
+            if not v1_scenario or not v2_scenario:
+                raise ValueError("Select a runnable scenario for both V1 and V2.")
+            validate_worktree(v1_path, v1_scenario)
+            validate_worktree(v2_path, v2_scenario)
+
+            for worktree, selected in ((v1_path, v1_scenario), (v2_path, v2_scenario)):
+                if Path(selected).suffix.lower() in {".py", ".pyw"}:
+                    blocker = _python_entrypoint_runtime_blocker(worktree, selected)
+                    if blocker == "camera":
+                        raise ValueError(
+                            f"Runtime scenario '{selected}' in {worktree.name} requires physical "
+                            "camera access and cannot run in the isolated comparison worker. "
+                            "Choose a bounded scenario that does not initialize hardware."
+                        )
+
+            # Use one compatible interpreter for Python versions; other
+            # language adapters select their own installed toolchains.
+            python_scenario = (
+                v1_scenario if Path(v1_scenario).suffix.lower() in {".py", ".pyw"}
+                else v2_scenario
+            )
+            pair_python = _select_python_for_pair(v1_path, v2_path, python_scenario)
+
+            def execute_selected(worktree, selected):
+                suffix = Path(selected).suffix.lower()
+                if suffix in {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}:
+                    from architecture_model.node_runtime_adapter import run_node_version
+                    return run_node_version(worktree, scenario=selected, timeout=timeout)
+                if suffix == ".rb":
+                    from architecture_model.ruby_runtime_adapter import run_ruby_version
+                    return run_ruby_version(worktree, scenario=selected, timeout=timeout)
+                if suffix == ".go":
+                    from architecture_model.go_runtime_adapter import run_go_version
+                    return run_go_version(worktree, scenario=selected, timeout=timeout)
+                if suffix == ".java":
+                    from architecture_model.java_runtime_adapter import run_java_version
+                    return run_java_version(worktree, scenario=selected, timeout=timeout)
+                if suffix in {".c", ".cc", ".cpp", ".cxx", ".c++"}:
+                    from architecture_model.native_runtime_adapter import run_native_version
+                    return run_native_version(worktree, scenario=selected, timeout=timeout)
+                if suffix == ".csproj":
+                    from architecture_model.csharp_runtime_adapter import run_csharp_version
+                    return run_csharp_version(worktree, scenario=selected, timeout=timeout)
+                if Path(selected).name.lower() == "cargo.toml":
+                    from architecture_model.rust_runtime_adapter import run_rust_version
+                    return run_rust_version(worktree, scenario=selected, timeout=timeout)
+                if suffix == ".php":
+                    from architecture_model.php_runtime_adapter import run_php_version
+                    return run_php_version(worktree, scenario=selected, timeout=timeout)
+                if suffix in {".py", ".pyw"}:
+                    return run_version(
+                        worktree, scenario=selected, timeout=timeout,
+                        runtime_input=runtime_input, python_executable=pair_python,
+                    )
+                raise ValueError(f"No runtime adapter is available for scenario: {selected}")
+
+            v1_runtime = execute_selected(v1_path, v1_scenario)
+            v2_runtime = execute_selected(v2_path, v2_scenario)
+
+            # A trace with no modules is not a valid comparison result. In
+            # particular, never display a misleading all-zero V2 snapshot.
+            if v1_runtime.get_module_count() == 0:
+                raise RuntimeError(
+                    f"V1 scenario '{v1_scenario}' completed without recording any runtime modules. "
+                    "Check its entry point, imports, and execution errors."
                 )
-                v2_runtime = run_version(
-                    v2_path, scenario=scenario, timeout=timeout,
-                    runtime_input=runtime_input, python_executable=pair_python,
+            if v2_runtime.get_module_count() == 0:
+                raise RuntimeError(
+                    f"V2 scenario '{v2_scenario}' completed without recording any runtime modules. "
+                    "The comparison was stopped instead of treating an empty trace as zero changes."
                 )
+
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
-                "scenario": scenario,
+                "scenario": v2_scenario if v1_scenario == v2_scenario else f"V1: {v1_scenario} | V2: {v2_scenario}",
+                "v1_scenario": v1_scenario,
+                "v2_scenario": v2_scenario,
                 "v1_runtime": v1_runtime,
                 "v2_runtime": v2_runtime,
                 "v1_metrics": _runtime_metrics(v1_runtime),
                 "v2_metrics": _runtime_metrics(v2_runtime),
-                "runtime_metric_deltas": _runtime_metric_deltas(
-                    v1_runtime,
-                    v2_runtime,
-                ),
+                "runtime_metric_deltas": _runtime_metric_deltas(v1_runtime, v2_runtime),
             }
         finally:
             for path in reversed(added):
@@ -1362,6 +1396,7 @@ def run_version_pair(
                 ["git", "-C", str(repository), "worktree", "prune"],
                 capture_output=True, text=True, timeout=30,
             )
+
 
     print(
         "=" * 60
