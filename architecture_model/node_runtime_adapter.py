@@ -478,11 +478,17 @@ def run_node_version(worktree_path, scenario, timeout=300):
             npm_node, npm_cli, npm_command = _resolve_npm_invocation(node)
             # Child Node processes spawned by Jest/Vitest inherit profiler and
             # coverage settings, so test workers are included as well.
+            inherited_profile_options = [
+                "--cpu-prof", "--cpu-prof-interval=100",
+                f'--cpu-prof-dir="{profile_dir}"',
+            ]
             env["NODE_OPTIONS"] = " ".join(
-                item for item in (env.get("NODE_OPTIONS", ""), *profile_options) if item
+                item for item in (
+                    env.get("NODE_OPTIONS", ""), *inherited_profile_options
+                ) if item
             )
             if npm_cli:
-                command = [npm_node, *profile_options, npm_cli, "test"]
+                command = [npm_node, npm_cli, "test"]
                 use_shell = False
             elif os.name == "nt":
                 command = subprocess.list2cmdline([npm_command, "test"])
