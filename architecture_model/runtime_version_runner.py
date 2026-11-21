@@ -130,8 +130,26 @@ def _python_entrypoint_runtime_blocker(worktree_path, entrypoint):
         except (OSError, SyntaxError, ValueError):
             continue
 
-        # Keyboard input is supported through the shared runtime_input payload.
-        # Only physical hardware access is treated as an automatic blocker.
+        # Automatic comparison must never block waiting for a person at a
+        # keyboard. Detect interactive input in the entry point and its local
+        # imports before selecting a workload.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id in {"input", "raw_input"}:
+                    return "keyboard_input"
+                if isinstance(func, ast.Attribute):
+                    receiver = func.value
+                    if func.attr in {"read", "readline"} and (
+                        (isinstance(receiver, ast.Attribute)
+                         and isinstance(receiver.value, ast.Name)
+                         and receiver.value.id == "sys"
+                         and receiver.attr == "stdin")
+                        or (isinstance(receiver, ast.Name) and receiver.id == "stdin")
+                    ):
+                        return "keyboard_input"
+                    if func.attr == "getpass" and isinstance(receiver, ast.Name) and receiver.id == "getpass":
+                        return "keyboard_input"
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -250,8 +268,8 @@ def discover_python_entrypoints(worktree_path):
         if any(marker in lowered for marker in server_markers):
             continue
 
-        # Camera initialization is often hidden in imported modules.
-        # Exclude entry points whose local import graph opens a physical camera.
+        # Exclude entry points that require physical hardware or interactive
+        # keyboard input. Runtime comparisons must be fully automatic.
         if _python_entrypoint_runtime_blocker(root, relative):
             continue
 
@@ -1262,9 +1280,10 @@ def _create_automatic_architecture_workload(
     parser_paths = (v1_path / "src" / "parser.py", v2_path / "src" / "parser.py")
     if not all(path.is_file() for path in parser_paths):
         raise FileNotFoundError(
-            "No shared runnable workload was found, and both commits do not contain "
-            "src/parser.py. Runtime comparison needs an executable workflow that exists "
-            "in both versions."
+            "No shared non-interactive runtime workload was found in the selected commits. "
+            "The discovered Python entry point requests keyboard input, so it was skipped. "
+            "Use Quick Static Architecture Comparison for source-level V1/V2 results, or "
+            "select commits that contain a non-interactive runnable workflow."
         )
 
     import ast
