@@ -277,16 +277,6 @@ def _render_runtime_evolution(repository_path):
                 if v2_scenarios else None
             )
 
-        runtime_input = st.text_area(
-            "Runtime Input (same input for V1 and V2)",
-            placeholder="Enter one response per line if the scenario uses input()",
-            help=(
-                "The exact same text is supplied to both Python executions. "
-                "Use one response per line for multiple input() prompts. "
-                "Leave empty for scenarios that do not request standard input."
-            ),
-            key="runtime_comparison_input",
-        )
         run_quick_comparison = st.form_submit_button("Quick Static Architecture Comparison")
         run_comparison = st.form_submit_button("Run Runtime Comparison")
 
@@ -318,12 +308,16 @@ def _render_runtime_evolution(repository_path):
         return
 
     if Path(v1_scenario).name.lower() == "sample_project.py" or Path(v2_scenario).name.lower() == "sample_project.py":
-        st.warning(
-            "At least one selected sample_project.py is a small demonstration scenario. It only reports behavior "
-            "inside the functions it actually calls; it does not exercise the full repository. "
-            "For meaningful application-wide evidence, select corresponding V1 and V2 CLI/test "
-            "scenarios that invoke representative workflows in their respective commits."
+        st.error(
+            "The selected sample_project.py is a demonstration script, not the loaded application's "
+            "real workflow. Running it can produce identical or misleading zero-change results."
         )
+        st.info(
+            "Use Quick Static Architecture Comparison to compare the complete repository commits. "
+            "Runtime comparison requires a bounded CLI or test scenario that actually executes the "
+            "application functions changed between V1 and V2."
+        )
+        return
 
     with st.spinner("Running the selected V1 and V2 scenarios and collecting execution traces..."):
         try:
@@ -333,7 +327,6 @@ def _render_runtime_evolution(repository_path):
                 v2_commit=v2_commit,
                 v1_scenario=v1_scenario,
                 v2_scenario=v2_scenario,
-                runtime_input=runtime_input,
             )
 
             comparison = compare_runtime_architectures(
@@ -374,7 +367,7 @@ def _render_runtime_evolution(repository_path):
                 st.code(error_text)
                 st.info(
                     "Runtime metrics are shown only when both selected scenarios complete "
-                    "successfully. The same supplied input is used for both Python runs. Static architecture, "
+                    "successfully. Static architecture, "
                     "source inventory, and commit-level architecture comparison "
                     "remain available when runtime execution is blocked."
                 )
