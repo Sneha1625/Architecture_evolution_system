@@ -270,10 +270,9 @@ def _render_runtime_evolution(repository_path):
             # Keep static architecture, dependencies, and history visible when
             # either independently selected scenario cannot be validated.
             st.warning(
-                "Runtime execution comparison could not be completed because a common "
-                "runnable workload was not found in both selected commits. Your static "
-                "architecture graph, dependency inventory, and snapshot history remain "
-                "available above. The exact reason is shown below."
+                "Runtime execution comparison could not be completed because a selected "
+                "workload or required project file was not found. Your static architecture "
+                "graph, dependency inventory, and snapshot history remain available above."
             )
             st.caption(str(error))
             return
