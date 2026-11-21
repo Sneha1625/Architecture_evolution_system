@@ -60,6 +60,22 @@ def discover_node_entrypoints(worktree_path):
         "https.createserver(", "listen(",
     )
     candidates = []
+    # Prefer a real test-suite workload over importing a router or app module
+    # that registers handlers but never exercises them.
+    package_file = root / "package.json"
+    if package_file.is_file():
+        try:
+            package_data = json.loads(package_file.read_text(encoding="utf-8"))
+            test_script = package_data.get("scripts", {}).get("test", "")
+            if isinstance(test_script, str) and re.search(
+                r"\b(?:jest|vitest|mocha|ava|tap|node\s+--test)\b",
+                test_script,
+                re.IGNORECASE,
+            ):
+                candidates.append("npm:test")
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in NODE_EXTENSIONS:
             continue
@@ -114,7 +130,11 @@ def _project_module(url, root):
         relative = path.relative_to(root)
     except (ValueError, OSError, RuntimeError):
         return None
-    if any(part.lower() in {"node_modules", "vendor", ".git", "dist", "build"} for part in relative.parts):
+    if any(part.lower() in {"node_modules", "vendor", ".git", "dist", "build", "test", "tests", "__tests__"} for part in relative.parts):
+        return None
+    if re.search(r"(?:\.test|\.spec)\.[cm]?[jt]sx?$", path.name, re.IGNORECASE):
+        return None
+    # 
         return None
     return relative.as_posix()
 
@@ -290,6 +310,64 @@ def _resolve_node_executable():
         return node
     return _provision_node_runtime()
 
+def _resolve_npm_invocation(node_executable):
+    """Locate npm beside Node, on PATH, or in the bundled Node 22 runtime."""
+    def locate(node_path):
+        node_path = Path(node_path).resolve()
+        node_dir = node_path.parent
+        candidates = [
+            node_dir / "node_modules" / "npm" / "bin" / "npm-cli.js",
+            node_dir / "npm" / "node_modules" / "npm" / "bin" / "npm-cli.js",
+            node_dir.parent / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js",
+        ]
+        npm_path = shutil.which("npm") or shutil.which("npm.cmd")
+        if npm_path:
+            resolved_npm = Path(npm_path).resolve()
+            if resolved_npm.is_file() and resolved_npm.suffix.lower() == ".js":
+                candidates.insert(0, resolved_npm)
+            candidates.extend([
+                resolved_npm.parent / "node_modules" / "npm" / "bin" / "npm-cli.js",
+                resolved_npm.parent.parent / "node_modules" / "npm" / "bin" / "npm-cli.js",
+            ])
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(node_path), str(candidate), None
+        if npm_path:
+            return str(node_path), None, str(npm_path)
+        return None
+
+    found = locate(node_executable)
+    if found:
+        return found
+    # A minimal PATH installation may contain node.exe but not npm. The
+    # official cached distribution bundles both, so use it automatically.
+    bundled_node = _provision_node_runtime()
+    found = locate(bundled_node)
+    if found:
+        return found
+    raise RuntimeError(
+        "Node.js is available, but npm could not be located beside it or in the "
+        "official cached Node.js distribution. Declared project dependencies "
+        "cannot be installed for runtime comparison."
+    )
+
+
+def _run_npm(node_executable, npm_cli, npm_command, arguments, cwd, timeout):
+    if npm_cli:
+        command = [node_executable, npm_cli, *arguments]
+        use_shell = False
+    elif os.name == "nt":
+        command = subprocess.list2cmdline([npm_command, *arguments])
+        use_shell = True
+    else:
+        command = [npm_command, *arguments]
+        use_shell = False
+    return subprocess.run(
+        command, cwd=str(cwd), capture_output=True, text=True,
+        timeout=timeout, shell=use_shell,
+    )
+
+
 def _install_node_dependencies(root: Path, timeout=180, node_executable=None):
     """Install a selected commit's declared npm dependencies inside its isolated worktree.
 
@@ -314,58 +392,21 @@ def _install_node_dependencies(root: Path, timeout=180, node_executable=None):
     if not any(isinstance(group, dict) and group for group in dependency_groups):
         return False
 
-    # npm may be installed beside node.exe without being added to PATH
-    # (common with portable/cached Node.js installations on Windows).
-    npm = shutil.which("npm") or shutil.which("npm.cmd")
-    npm_cli = None
-    node_path = Path(node_executable).resolve() if node_executable else None
-    if not npm and node_path:
-        node_dir = node_path.parent
-        for candidate in (
-            node_dir / "npm.cmd",
-            node_dir / "npm",
-            node_dir / "node_modules" / "npm" / "bin" / "npm-cli.js",
-            node_dir.parent / "lib" / "node_modules" / "npm" / "bin" / "npm-cli.js",
-        ):
-            if candidate.is_file():
-                if candidate.name.lower() == "npm-cli.js":
-                    npm_cli = candidate
-                else:
-                    npm = str(candidate)
-                break
-
-    if not npm and not npm_cli:
-        raise RuntimeError(
-            "This Node.js project declares npm dependencies, but npm could not be found "
-            "on PATH or beside the Node.js executable. Install the official Node.js "
-            "LTS package (including npm), or add its installation folder to PATH, "
-            "then restart the application."
-        )
+    npm_node, npm_cli, npm_command = _resolve_npm_invocation(
+        node_executable or _resolve_node_executable()
+    )
 
     if (root / "package-lock.json").is_file() or (root / "npm-shrinkwrap.json").is_file():
         arguments = ["ci", "--ignore-scripts", "--no-audit", "--no-fund"]
     else:
-        # Repositories using pnpm/yarn lockfiles are resolved from package.json
-        # inside the isolated worktree without creating a new lockfile.
         arguments = [
             "install", "--ignore-scripts", "--no-audit", "--no-fund",
             "--package-lock=false",
         ]
 
-    if npm_cli:
-        command = [str(node_path), str(npm_cli), *arguments]
-        use_shell = False
-    elif os.name == "nt":
-        command = subprocess.list2cmdline([npm, *arguments])
-        use_shell = True
-    else:
-        command = [npm, *arguments]
-        use_shell = False
-
     try:
-        process = subprocess.run(
-            command, cwd=str(root), capture_output=True, text=True,
-            timeout=timeout, shell=use_shell,
+        process = _run_npm(
+            npm_node, npm_cli, npm_command, arguments, root, timeout
         )
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(
@@ -376,34 +417,49 @@ def _install_node_dependencies(root: Path, timeout=180, node_executable=None):
         details = (process.stderr or process.stdout or "npm exited unsuccessfully")[-5000:]
         raise RuntimeError(
             f"Could not install Node.js dependencies for {root.name} "
-            f"(npm exit {process.returncode}):\\n{details}"
+            f"(npm exit {process.returncode}):\n{details}"
         )
     return True
 
 
 def run_node_version(worktree_path, scenario, timeout=300):
-    """Execute one JS scenario and return project-only runtime evidence."""
+    """Execute a JS/TS file or declared npm test workload and collect runtime evidence."""
     root = Path(worktree_path).resolve()
-    scenario_path = (root / scenario).resolve()
-    try:
-        scenario_path.relative_to(root)
-    except ValueError as error:
-        raise ValueError("Runtime scenario must be inside the selected repository.") from error
-    if not scenario_path.is_file() or scenario_path.suffix.lower() not in NODE_EXTENSIONS:
-        raise FileNotFoundError(f"JavaScript runtime scenario not found: {scenario_path}")
-    source = scenario_path.read_text(encoding="utf-8", errors="ignore")
-    if _contains_jsx_syntax(source):
-        raise RuntimeError(
-            f"Selected scenario {scenario!r} contains JSX. Plain Node.js cannot execute JSX directly. "
-            "Select a runnable Node.js backend/CLI entry point, or add a bounded runtime_scenario.js "
-            "that exercises the application logic without starting a frontend development server. "
-            "For a React UI, use static architecture analysis unless a browser-driven runtime scenario is provided."
-        )
+    npm_test = scenario == "npm:test"
+    scenario_path = None if npm_test else (root / scenario).resolve()
+
+    if npm_test:
+        package_file = root / "package.json"
+        try:
+            package_data = json.loads(package_file.read_text(encoding="utf-8"))
+            test_script = package_data.get("scripts", {}).get("test")
+        except (OSError, json.JSONDecodeError, AttributeError) as error:
+            raise FileNotFoundError(
+                "The selected commit does not contain a readable package.json test script."
+            ) from error
+        if not isinstance(test_script, str) or not test_script.strip():
+            raise FileNotFoundError("The selected commit does not declare an npm test script.")
+    else:
+        try:
+            scenario_path.relative_to(root)
+        except ValueError as error:
+            raise ValueError("Runtime scenario must be inside the selected repository.") from error
+        if not scenario_path.is_file() or scenario_path.suffix.lower() not in NODE_EXTENSIONS:
+            raise FileNotFoundError(f"JavaScript runtime scenario not found: {scenario_path}")
+        source = scenario_path.read_text(encoding="utf-8", errors="ignore")
+        if _contains_jsx_syntax(source):
+            raise RuntimeError(
+                f"Selected scenario {scenario!r} contains JSX. Plain Node.js cannot execute JSX directly. "
+                "Use a declared test script with its configured frontend toolchain, or select a "
+                "bounded Node.js backend/CLI entry point."
+            )
+
     node = _resolve_node_executable()
     _install_node_dependencies(root, timeout=min(timeout, 180), node_executable=node)
 
     architecture = RuntimeArchitecture(entry_point=scenario)
-    architecture.modules.add(scenario_path.relative_to(root).as_posix())
+    if scenario_path is not None:
+        architecture.modules.add(scenario_path.relative_to(root).as_posix())
 
     with tempfile.TemporaryDirectory(prefix="architecture_node_runtime_") as temp:
         temp_path = Path(temp)
@@ -413,26 +469,54 @@ def run_node_version(worktree_path, scenario, timeout=300):
         profile_dir.mkdir()
         env = os.environ.copy()
         env["NODE_V8_COVERAGE"] = str(coverage_dir)
-        command = [node]
-        if scenario_path.suffix.lower() in {".ts", ".mts", ".cts"}:
-            # Node 22+ can strip erasable TypeScript syntax without a build step.
-            # Projects requiring tsconfig transforms or custom loaders must use
-            # their own compiled JavaScript entry point instead.
-            command.append("--experimental-strip-types")
-        command.extend([
+        env["CI"] = "1"
+        env["FORCE_COLOR"] = "0"
+        profile_options = [
             "--cpu-prof", "--cpu-prof-interval=100",
-            f"--cpu-prof-dir={profile_dir}", str(scenario_path),
-        ])
+            f"--cpu-prof-dir={profile_dir}",
+        ]
+
+        if npm_test:
+            npm_node, npm_cli, npm_command = _resolve_npm_invocation(node)
+            # Child Node processes spawned by Jest/Vitest inherit profiler and
+            # coverage settings, so test workers are included as well.
+            env["NODE_OPTIONS"] = " ".join(
+                item for item in (env.get("NODE_OPTIONS", ""), *profile_options) if item
+            )
+            if npm_cli:
+                command = [npm_node, *profile_options, npm_cli, "test"]
+                use_shell = False
+            elif os.name == "nt":
+                command = subprocess.list2cmdline([npm_command, "test"])
+                use_shell = True
+            else:
+                command = [npm_command, "test"]
+                use_shell = False
+        else:
+            command = [node]
+            if scenario_path.suffix.lower() in {".ts", ".mts", ".cts"}:
+                # tsx honors tsconfig and resolves TypeScript imports ending in
+                # .js to their .ts source files.
+                if (root / "node_modules" / "tsx" / "package.json").is_file():
+                    command.extend(["--import", "tsx"])
+                else:
+                    command.append("--experimental-strip-types")
+            command.extend([*profile_options, str(scenario_path)])
+            use_shell = False
+
         try:
             process = subprocess.run(
                 command, cwd=str(root), env=env, capture_output=True,
-                text=True, timeout=timeout,
+                text=True, timeout=timeout, shell=use_shell,
             )
         except subprocess.TimeoutExpired as error:
-            raise RuntimeError(f"Node.js runtime scenario timed out after {timeout} seconds: {scenario}") from error
+            raise RuntimeError(
+                f"Node.js runtime workload timed out after {timeout} seconds: {scenario}"
+            ) from error
         if process.returncode != 0:
             details = (process.stderr or process.stdout or "Node.js exited unsuccessfully")[-5000:]
-            raise RuntimeError(f"Node.js runtime scenario failed ({process.returncode}):\n{details}")
+            label = "npm test workload" if npm_test else "Node.js runtime scenario"
+            raise RuntimeError(f"{label} failed ({process.returncode}):\n{details}")
 
         # V8 coverage is the reliable source for which project modules executed.
         for coverage_file in coverage_dir.glob("*.json"):
