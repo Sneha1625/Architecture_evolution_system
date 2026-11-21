@@ -321,3 +321,77 @@ def test_runtime_version_pair_automatically_uses_recovery_workload(tmp_path):
     assert result["v2_runtime"].get_relationship_count() > 0
     assert "helper.calculate" in result["v1_runtime"].executed_functions
     assert "helper.calculate" in result["v2_runtime"].executed_functions
+
+
+
+def test_runtime_version_pair_generates_shared_workload_for_older_commits(tmp_path):
+    import subprocess
+    from architecture_model.runtime_version_runner import run_version_pair
+
+    repository = tmp_path / "older_automatic_repo"
+    repository.mkdir()
+
+    def git(*args):
+        subprocess.run(
+            ["git", "-C", str(repository), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init")
+    git("config", "user.name", "Runtime Test")
+    git("config", "user.email", "runtime-test@example.com")
+
+    (repository / "src").mkdir()
+    (repository / "src" / "parser.py").write_text(
+        "def parse_folder(path):\n    from helper import calculate\n    return calculate()\n",
+        encoding="utf-8",
+    )
+    (repository / "helper.py").write_text(
+        "def calculate():\n    return 1\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    git("commit", "-m", "V1 without recovery module")
+    v1_commit = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    (repository / "architecture_model").mkdir()
+    (repository / "architecture_model" / "recovery.py").write_text(
+        "def recover_architecture(value):\n    from helper import calculate\n    return calculate()\n",
+        encoding="utf-8",
+    )
+    (repository / "test_architecture_recovery.py").write_text(
+        "from src.parser import parse_folder\n"
+        "from architecture_model.recovery import recover_architecture\n"
+        "parsed = parse_folder('.')\n"
+        "snapshot = recover_architecture(parsed)\n",
+        encoding="utf-8",
+    )
+    (repository / "helper.py").write_text(
+        "def calculate():\n    return 2\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    git("commit", "-m", "V2 adds recovery module")
+    v2_commit = subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+    result = run_version_pair(
+        repository_path=repository,
+        v1_commit=v1_commit,
+        v2_commit=v2_commit,
+    )
+
+    assert Path(result["scenario"]).name == "architecture_runtime_workload.py"
+    assert result["v1_runtime"].get_module_count() > 0
+    assert result["v2_runtime"].get_module_count() > 0
+    assert "helper.calculate" in result["v1_runtime"].executed_functions
+    assert "helper.calculate" in result["v2_runtime"].executed_functions
+    assert "architecture_model.recovery.recover_architecture" not in result["v1_runtime"].executed_functions
+    assert "architecture_model.recovery.recover_architecture" in result["v2_runtime"].executed_functions
