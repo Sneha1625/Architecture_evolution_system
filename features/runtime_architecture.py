@@ -277,6 +277,19 @@ def _render_runtime_evolution(repository_path):
                 "graph, dependency inventory, and snapshot history remain available above."
             )
             st.caption(str(error))
+            try:
+                with st.spinner("Recovering a static V1/V2 architecture comparison instead..."):
+                    static_result = _compare_static_commit_architectures(
+                        repository_path, v1_commit, v2_commit
+                    )
+                st.info(
+                    "Runtime execution was not safe or supported for this pair of commits. "
+                    "The structural results below are measured from both source snapshots; "
+                    "they are not presented as runtime call counts."
+                )
+                _display_quick_static_comparison(static_result, v1_commit, v2_commit)
+            except Exception as static_error:
+                st.warning(f"Static fallback could not be completed: {static_error}")
             return
 
         except Exception as error:
@@ -329,7 +342,13 @@ def _render_runtime_evolution(repository_path):
             versions["v2_commit"],
         )
 
-    if Path(versions["scenario"]).name == "flask_test_client_runtime.py":
+    if Path(versions["scenario"]).name == "smartmonitor_runtime_workload.py":
+        st.info(
+            "Runtime workload: deterministic face-tracker and timetable utility functions were "
+            "exercised in both commits. Webcam capture, model initialization, database writes, "
+            "speech output, and email delivery are deliberately excluded from this headless test."
+        )
+    elif Path(versions["scenario"]).name == "flask_test_client_runtime.py":
         st.info(
             "Runtime workload: Flask routes exercised with the in-process test client. "
             "GET and POST requests are sent without starting a web server; the external "
