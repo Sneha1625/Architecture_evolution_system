@@ -1711,6 +1711,21 @@ def run_version_pair(
                     "The comparison was stopped instead of treating an empty trace as zero changes."
                 )
 
+            # A Python trace that imports a file but never enters a project
+            # function is not meaningful execution coverage. Stop rather than
+            # presenting a mostly empty runtime comparison as a successful run.
+            if v1_family == "python":
+                if not v1_runtime.executed_functions:
+                    raise RuntimeError(
+                        f"V1 scenario '{v1_scenario}' completed without entering any project functions. "
+                        "The static architecture fallback will show source-level changes instead."
+                    )
+                if not v2_runtime.executed_functions:
+                    raise RuntimeError(
+                        f"V2 scenario '{v2_scenario}' completed without entering any project functions. "
+                        "The static architecture fallback will show source-level changes instead."
+                    )
+
             return {
                 "v1_commit": get_commit_hash(v1_path),
                 "v2_commit": get_commit_hash(v2_path),
