@@ -316,6 +316,19 @@ def _render_runtime_evolution(repository_path):
             else:
                 st.error("Runtime execution comparison could not be completed.")
                 st.exception(error)
+            try:
+                with st.spinner("Recovering a static V1/V2 architecture comparison instead..."):
+                    static_result = _compare_static_commit_architectures(
+                        repository_path, v1_commit, v2_commit
+                    )
+                st.info(
+                    "The runtime workload did not complete successfully, so runtime counts are "
+                    "not being fabricated or shown as zero. The structural results below are "
+                    "measured from both source snapshots and are not runtime call counts."
+                )
+                _display_quick_static_comparison(static_result, v1_commit, v2_commit)
+            except Exception as static_error:
+                st.warning(f"Static fallback could not be completed: {static_error}")
             return
 
     # ========================================================
