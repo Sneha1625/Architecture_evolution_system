@@ -252,6 +252,75 @@ def _create_automatic_flask_test_client_workload(v1_path, v2_path, temporary_roo
     return str(workload)
 
 
+
+
+def _is_smartmonitor_project(worktree_path):
+    """Recognize SmartMonitor's safe, non-camera utility workflow."""
+    root = Path(worktree_path).resolve()
+    tracker_file = root / "tracker.py"
+    timetable_file = root / "timetable_helper.py"
+    config_file = root / "config.py"
+    if not all(item.is_file() for item in (tracker_file, timetable_file, config_file)):
+        return False
+    try:
+        import ast
+        tracker_tree = ast.parse(tracker_file.read_text(encoding="utf-8", errors="ignore"))
+        timetable_tree = ast.parse(timetable_file.read_text(encoding="utf-8", errors="ignore"))
+    except (OSError, SyntaxError, ValueError):
+        return False
+    tracker_api = any(
+        isinstance(node, ast.ClassDef)
+        and node.name == "FaceTracker"
+        and any(
+            isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and child.name == "update"
+            for child in node.body
+        )
+        for node in tracker_tree.body
+    )
+    timetable_api = {
+        node.name for node in timetable_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    return tracker_api and {
+        "slot_to_mins", "load_timetable", "get_current_session",
+        "get_all_todays_sessions", "get_session_email",
+    }.issubset(timetable_api)
+
+
+def _create_automatic_smartmonitor_workload(v1_path, v2_path, temporary_root):
+    """Exercise deterministic tracking/timetable logic without camera, email, or database writes."""
+    if not all(_is_smartmonitor_project(path) for path in (v1_path, v2_path)):
+        raise FileNotFoundError(
+            "The selected commits do not both contain the supported SmartMonitor utility modules."
+        )
+    workload = Path(temporary_root) / "smartmonitor_runtime_workload.py"
+    workload.write_text(
+        "from tracker import FaceTracker\\n"
+        "from timetable_helper import (\\n"
+        "    slot_to_mins, load_timetable, get_current_session,\\n"
+        "    get_all_todays_sessions, get_session_email,\\n"
+        ")\\n"
+        "assert slot_to_mins('08:00 AM') == 480\\n"
+        "assert slot_to_mins('12:00 PM') == 720\\n"
+        "timetable = load_timetable()\\n"
+        "assert isinstance(timetable, dict)\\n"
+        "current_session = get_current_session()\\n"
+        "assert isinstance(current_session, dict)\\n"
+        "assert {'subject', 'faculty', 'day', 'period'}.issubset(current_session)\\n"
+        "todays_sessions = get_all_todays_sessions()\\n"
+        "assert isinstance(todays_sessions, list)\\n"
+        "session_email = get_session_email()\\n"
+        "assert session_email is None or isinstance(session_email, str)\\n"
+        "tracker = FaceTracker()\\n"
+        "first = tracker.update([{'cx': 100, 'cy': 100, 'raw_name': 'runtime-student'}])\\n"
+        "assert first[0]['stable_name'] == 'runtime-student'\\n"
+        "second = tracker.update([{'cx': 104, 'cy': 102, 'raw_name': 'runtime-student'}])\\n"
+        "assert second[0]['stable_name'] == 'runtime-student'\\n",
+        encoding="utf-8",
+    )
+    return str(workload)
+
 def discover_python_entrypoints(worktree_path):
     """Find likely bounded Python execution scenarios without guessing.
 
@@ -394,6 +463,8 @@ def discover_python_entrypoints(worktree_path):
 
     if _is_flask_test_client_project(root):
         candidates.append((1100, -1, 'flask:test-client'))
+    if _is_smartmonitor_project(root):
+        candidates.append((1090, -1, 'python:smartmonitor-smoke'))
 
     candidates.sort(key=lambda item: (-item[0], item[1], item[2].lower()))
     return [item[2] for item in candidates[:100]]
@@ -665,6 +736,12 @@ def validate_worktree(
         if not candidates:
             raise FileNotFoundError("No Python entry point found in this repository. Add/select a runnable .py entry point.")
         scenario = candidates[0]
+
+    # These virtual workloads are generated outside the selected worktree.
+    if scenario == "python:smartmonitor-smoke":
+        if not _is_smartmonitor_project(worktree_path):
+            raise FileNotFoundError("The selected commit does not expose the required SmartMonitor utility API.")
+        return
 
     # npm:test is a virtual scenario executed from the selected commit's package.json.
     if scenario == "npm:test":
@@ -1335,7 +1412,8 @@ def _common_runtime_entrypoint(v1_path: Path, v2_path: Path) -> str:
     if not common:
         return None
     preferred = (
-        "flask:test-client", "npm:test", "runtime_scenario.py", "test_architecture_recovery.py",
+        "flask:test-client", "python:smartmonitor-smoke", "npm:test",
+        "runtime_scenario.py", "test_architecture_recovery.py",
         "main.py", "run.py", "cli.py", "__main__.py",
     )
     preferred_order = {name: index for index, name in enumerate(preferred)}
@@ -1504,6 +1582,11 @@ def run_version_pair(
                         common_workload = _common_runtime_entrypoint(v1_path, v2_path)
                         if common_workload == "flask:test-client":
                             generated_workload = _create_automatic_flask_test_client_workload(
+                                v1_path, v2_path, temp_root
+                            )
+                            v1_scenario = v2_scenario = generated_workload
+                        elif common_workload == "python:smartmonitor-smoke":
+                            generated_workload = _create_automatic_smartmonitor_workload(
                                 v1_path, v2_path, temp_root
                             )
                             v1_scenario = v2_scenario = generated_workload
