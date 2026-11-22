@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from architecture_model.runtime_version_runner import (
+    _common_runtime_entrypoint,
     _create_automatic_smartmonitor_workload,
     _is_smartmonitor_project,
     discover_python_entrypoints,
@@ -60,3 +61,13 @@ def test_smartmonitor_workload_is_generated_outside_the_project(tmp_path):
     assert "slot_to_mins('08:00 AM')" in source
     assert "smtplib" not in source
     assert "VideoCapture" not in source
+
+
+def test_common_smartmonitor_workload_is_selected_for_both_versions(tmp_path):
+    v1, v2 = tmp_path / "v1", tmp_path / "v2"
+    v1.mkdir()
+    v2.mkdir()
+    _make_smartmonitor_project(v1)
+    _make_smartmonitor_project(v2)
+
+    assert _common_runtime_entrypoint(v1, v2) == "python:smartmonitor-smoke"
